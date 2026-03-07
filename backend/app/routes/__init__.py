@@ -24,3 +24,6 @@ def init_api(app):
 
     from app.routes.voice import blp as voice_blp
     api.register_blueprint(voice_blp)
+
+    from app.routes.invites import blp as invites_blp
+    api.register_blueprint(invites_blp)

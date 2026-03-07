@@ -4,10 +4,13 @@ from flask_smorest import Blueprint
 from app.middleware.auth_middleware import auth_required, permission_required
 from app.services.server_service import ServerError
 from app.services import server_service
+from app.services.invite_service import InviteError
+from app.services import invite_service
 from app.schemas import (
     CreateServerSchema, UpdateServerSchema,
     ServerResponseSchema, ServerListSchema,
     MemberListSchema, MessageSchema,
+    CreateInviteSchema, InviteResponseSchema, InviteListSchema,
 )
 
 blp = Blueprint(
@@ -142,3 +145,38 @@ def get_members(server_id, current_user=None):
     except ServerError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"members": members}), 200
+
+
+# ── POST /api/servers/<id>/invites  —  create an invite ────
+@blp.route("/<server_id>/invites", methods=["POST"])
+@blp.doc(security=BEARER)
+@blp.arguments(CreateInviteSchema)
+@blp.response(201, InviteResponseSchema)
+@auth_required
+@permission_required("manage_server")
+def create_invite(data, server_id, current_user=None):
+    try:
+        invite = invite_service.create_invite(
+            server_id=server_id,
+            user_id=str(current_user["_id"]),
+            max_uses=data.get("max_uses", 0),
+            expires_in_hours=data.get("expires_in_hours"),
+        )
+    except InviteError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    return jsonify({"invite": invite}), 201
+
+
+# ── GET /api/servers/<id>/invites  —  list server invites ──
+@blp.route("/<server_id>/invites", methods=["GET"])
+@blp.doc(security=BEARER)
+@blp.response(200, InviteListSchema)
+@auth_required
+def list_invites(server_id, current_user=None):
+    try:
+        invites = invite_service.list_server_invites(
+            server_id, str(current_user["_id"]),
+        )
+    except InviteError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    return jsonify({"invites": invites}), 200

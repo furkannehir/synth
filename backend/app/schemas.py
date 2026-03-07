@@ -209,3 +209,41 @@ class ParticipantListSchema(Schema):
 class MuteRequestSchema(Schema):
     track_sid = fields.String(required=True, metadata={"description": "Track session ID to mute/unmute"})
     muted = fields.Boolean(load_default=True, metadata={"description": "True to mute, False to unmute"})
+
+
+# ── Invites ─────────────────────────────────────────────────
+
+class CreateInviteSchema(Schema):
+    max_uses = fields.Integer(load_default=0, metadata={"description": "Max uses (0 = unlimited)"})
+    expires_in_hours = fields.Integer(
+        allow_none=True, load_default=None,
+        metadata={"description": "Hours until expiry (null = never)"},
+    )
+
+
+class InviteSchema(Schema):
+    id = fields.String(metadata={"description": "Invite ID"})
+    code = fields.String(metadata={"description": "Invite code"})
+    server_id = fields.String(metadata={"description": "Server ID"})
+    created_by = fields.String(metadata={"description": "Creator user ID"})
+    max_uses = fields.Integer(metadata={"description": "Max uses (0 = unlimited)"})
+    uses = fields.Integer(metadata={"description": "Times used"})
+    expires_at = fields.String(allow_none=True, metadata={"description": "Expiry ISO timestamp"})
+    created_at = fields.String(metadata={"description": "ISO timestamp"})
+    # Extra fields from preview
+    server_name = fields.String(load_default=None, metadata={"description": "Server name"})
+    server_icon = fields.String(allow_none=True, load_default=None, metadata={"description": "Server icon"})
+    member_count = fields.Integer(load_default=None, metadata={"description": "Server member count"})
+
+
+class InviteResponseSchema(Schema):
+    invite = fields.Nested(InviteSchema)
+
+
+class InviteListSchema(Schema):
+    invites = fields.List(fields.Nested(InviteSchema))
+
+
+class InviteAcceptResponseSchema(Schema):
+    server = fields.Nested(ServerSchema)
+    message = fields.String(metadata={"description": "Success message"})

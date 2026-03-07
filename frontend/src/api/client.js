@@ -83,3 +83,16 @@ export const presence = {
   heartbeat: () => request("/presence/heartbeat", { method: "POST" }),
   offline: () => request("/presence/offline", { method: "POST" }),
 };
+
+// Invites
+export const invites = {
+  create: (serverId, { max_uses = 0, expires_in_hours = null } = {}) =>
+    request(`/servers/${serverId}/invites`, {
+      method: "POST",
+      body: JSON.stringify({ max_uses, expires_in_hours }),
+    }),
+  list: (serverId) => request(`/servers/${serverId}/invites`),
+  preview: (code) => request(`/invites/${code}`),
+  accept: (code) => request(`/invites/${code}/accept`, { method: "POST" }),
+  delete: (code) => request(`/invites/${code}`, { method: "DELETE" }),
+};

@@ -11,12 +11,15 @@ app = create_app("development")
 client = app.test_client()
 
 # ── Cleanup ─────────────────────────────────────────────────
+TEST_EMAILS = ["owner@test.com", "joiner@test.com"]
+TEST_SERVER_NAMES = ["Test Gaming", "Renamed Gaming"]
+
 with app.app_context():
-    mongo.db.users.delete_many({"email": {"$in": [
-        "owner@test.com", "joiner@test.com",
+    mongo.db.users.delete_many({"email": {"$in": TEST_EMAILS}})
+    mongo.db.servers.delete_many({"name": {"$in": TEST_SERVER_NAMES}})
+    mongo.db.user_roles.delete_many({"user_id": {"$in": [
+        u["_id"] for u in mongo.db.users.find({"email": {"$in": TEST_EMAILS}}, {"_id": 1})
     ]}})
-    mongo.db.servers.delete_many({"name": {"$in": ["Test Gaming", "Renamed Gaming"]}})
-    mongo.db.user_roles.delete_many({})
 
 # ── Helpers ─────────────────────────────────────────────────
 def register(username, email, password):
@@ -213,11 +216,10 @@ print()
 
 # ── Cleanup ─────────────────────────────────────────────────
 with app.app_context():
-    mongo.db.users.delete_many({"email": {"$in": [
-        "owner@test.com", "joiner@test.com",
-    ]}})
-    mongo.db.servers.delete_many({"name": {"$in": ["Test Gaming", "Renamed Gaming"]}})
-    mongo.db.user_roles.delete_many({})
+    test_users = [u["_id"] for u in mongo.db.users.find({"email": {"$in": TEST_EMAILS}}, {"_id": 1})]
+    mongo.db.user_roles.delete_many({"user_id": {"$in": test_users}})
+    mongo.db.users.delete_many({"email": {"$in": TEST_EMAILS}})
+    mongo.db.servers.delete_many({"name": {"$in": TEST_SERVER_NAMES}})
     print("🧹 Test data cleaned up")
 
 print()

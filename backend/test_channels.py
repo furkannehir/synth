@@ -45,11 +45,13 @@ def give_permission(user_id, server_id, *perms):
 
 with app.app_context():
     # Clean previous test data
+    test_users = [u["_id"] for u in mongo.db.users.find({"email": {"$regex": r"^chan_test"}}, {"_id": 1})]
+    test_servers = [s["_id"] for s in mongo.db.servers.find({"name": {"$regex": r"^ChanTest"}}, {"_id": 1})]
+    mongo.db.user_roles.delete_many({"user_id": {"$in": test_users}})
+    mongo.db.channels.delete_many({"server_id": {"$in": test_servers}})
     mongo.db.users.delete_many({"email": {"$regex": r"^chan_test"}})
     mongo.db.servers.delete_many({"name": {"$regex": r"^ChanTest"}})
-    mongo.db.channels.delete_many({})
     mongo.db.roles.delete_many({"name": {"$regex": r"^_test_"}})
-    mongo.db.user_roles.delete_many({})
 
 # Create two users
 owner, owner_token = make_user("chan_owner", "chan_test_owner@test.com")
@@ -300,11 +302,13 @@ check("Name unchanged", r.get_json()["channel"]["name"] == "Secret Room")
 
 # ── Cleanup ─────────────────────────────────────────────────
 with app.app_context():
+    test_users = [u["_id"] for u in mongo.db.users.find({"email": {"$regex": r"^chan_test"}}, {"_id": 1})]
+    test_servers = [s["_id"] for s in mongo.db.servers.find({"name": {"$regex": r"^ChanTest"}}, {"_id": 1})]
+    mongo.db.user_roles.delete_many({"user_id": {"$in": test_users}})
+    mongo.db.channels.delete_many({"server_id": {"$in": test_servers}})
     mongo.db.users.delete_many({"email": {"$regex": r"^chan_test"}})
     mongo.db.servers.delete_many({"name": {"$regex": r"^ChanTest"}})
-    mongo.db.channels.delete_many({})
     mongo.db.roles.delete_many({"name": {"$regex": r"^_test_"}})
-    mongo.db.user_roles.delete_many({"user_id": {"$exists": True}})
 
 print("\n🧹 Test data cleaned up")
 print(f"\n🎉 {passed}/{total} TESTS PASSED!" if passed == total

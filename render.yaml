@@ -8,9 +8,9 @@ services:
       - key: FLASK_ENV
         value: production
       - key: SECRET_KEY
-        generateValue: true
+        sync: false
       - key: JWT_SECRET_KEY
-        generateValue: true
+        sync: false
       - key: MONGO_URI
         sync: false
       - key: LIVEKIT_API_KEY

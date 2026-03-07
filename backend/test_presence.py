@@ -140,8 +140,9 @@ check("User still online", me["is_online"] == True)
 
 # ── Cleanup ─────────────────────────────────────────────────
 with app.app_context():
+    test_users = [u["_id"] for u in mongo.db.users.find({"email": {"$regex": r"^pres_test"}}, {"_id": 1})]
+    mongo.db.user_roles.delete_many({"user_id": {"$in": test_users}})
     mongo.db.users.delete_many({"email": {"$regex": r"^pres_test"}})
-    mongo.db.user_roles.delete_many({"user_id": {"$exists": True}})
 
 print("\n🧹 Test data cleaned up")
 print(f"\n🎉 {passed}/{total} TESTS PASSED!" if passed == total

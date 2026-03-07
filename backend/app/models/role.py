@@ -30,7 +30,8 @@ ALL_PERMISSIONS = [
     # Moderation
     "kick_user",            # kick someone from a channel
     "mute_user",            # server-mute another user
-    # Admin
+    # Admin / Server
+    "manage_server",        # edit server settings, create invites
     "manage_roles",         # create / edit / delete roles
     "assign_roles",         # assign / revoke roles to users
     "join_any_channel",     # bypass channel restrictions
@@ -88,6 +89,22 @@ def seed_defaults():
                 **role_def,
                 "created_at": datetime.now(timezone.utc),
             })
+
+
+def sync_default_roles():
+    """Update existing default roles so their permissions match the code.
+
+    Runs on every boot to ensure new permissions (e.g. manage_server)
+    are applied to roles that were seeded before the permission existed.
+    Only touches the three built-in roles; custom roles are left alone.
+    """
+    for role_def in DEFAULT_ROLES:
+        existing = _roles().find_one({"name": role_def["name"]})
+        if existing and set(existing["permissions"]) != set(role_def["permissions"]):
+            _roles().update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"permissions": role_def["permissions"]}},
+            )
 
 
 # ── Role CRUD ───────────────────────────────────────────────

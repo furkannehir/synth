@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
+import InvitePage from "./pages/InvitePage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -44,6 +45,10 @@ export default function App() {
           <Route
             path="/register"
             element={<GuestRoute><RegisterPage /></GuestRoute>}
+          />
+          <Route
+            path="/invite/:code"
+            element={<InvitePage />}
           />
           <Route
             path="/"

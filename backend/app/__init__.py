@@ -74,28 +74,42 @@ def create_app(config_name: str | None = None) -> Flask:
     def handle_db_error(error):
         return {"error": "Database unavailable. Please try again later."}, 503
 
-    # ── Database indexes (best-effort) ─────────────────────────
+    # ── Database indexes & seeding (idempotent) ─────────────────
     with app.app_context():
         try:
             from app.models.user import ensure_indexes as user_indexes
             from app.models.role import ensure_indexes as role_indexes
-            from app.models.role import seed_defaults as seed_roles
             from app.models.server import ensure_indexes as server_indexes
-            from app.models.server import seed_default as seed_server
             from app.models.channel import ensure_indexes as channel_indexes
-            from app.models.channel import seed_default_for_server
-            from app.models.server import find_default as find_default_server
+            from app.models.invite import ensure_indexes as invite_indexes
             user_indexes()
             role_indexes()
             server_indexes()
             channel_indexes()
-            seed_roles()
-            seed_server()
-            # Seed a default "General" voice channel for the default server
+            invite_indexes()
+
+            # Only seed defaults when the DB is empty (first boot)
+            if mongo.db.roles.count_documents({}, limit=1) == 0:
+                from app.models.role import seed_defaults as seed_roles
+                seed_roles()
+                app.logger.info("Seeded default roles.")
+            else:
+                # Ensure built-in roles stay in sync with code changes
+                from app.models.role import sync_default_roles
+                sync_default_roles()
+
+            if mongo.db.servers.count_documents({"is_default": True}, limit=1) == 0:
+                from app.models.server import seed_default as seed_server
+                seed_server()
+                app.logger.info("Seeded default server.")
+
+            from app.models.server import find_default as find_default_server
+            from app.models.channel import seed_default_for_server
             default_server = find_default_server()
             if default_server:
                 seed_default_for_server(str(default_server["_id"]))
-            app.logger.info("Database indexes created & defaults seeded.")
+
+            app.logger.info("Database indexes verified & seeding complete.")
         except Exception as exc:
             app.logger.warning(
                 "Could not create DB indexes (is MongoDB running?): %s",
