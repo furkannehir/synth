@@ -1,0 +1,85 @@
+const API_BASE = "/api";
+
+function getToken() {
+  const t = localStorage.getItem("synth_token");
+  if (!t || t === "undefined") return null;
+  return t;
+}
+
+export function setToken(token) {
+  localStorage.setItem("synth_token", token);
+}
+
+export function clearToken() {
+  localStorage.removeItem("synth_token");
+}
+
+async function request(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...options.headers };
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  const data = await res.json();
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      clearToken();
+    }
+    throw new Error(data.message || data.error || "Request failed");
+  }
+  return data;
+}
+
+// Auth
+export const auth = {
+  register: (username, email, password) =>
+    request("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password }),
+    }),
+  login: (email, password) =>
+    request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  me: () => request("/auth/me"),
+};
+
+// Servers
+export const servers = {
+  list: () => request("/servers"),
+  get: (id) => request(`/servers/${id}`),
+  create: (name) =>
+    request("/servers", { method: "POST", body: JSON.stringify({ name }) }),
+  join: (id) => request(`/servers/${id}/join`, { method: "POST" }),
+  leave: (id) => request(`/servers/${id}/leave`, { method: "POST" }),
+};
+
+// Channels
+export const channels = {
+  list: (serverId) => request(`/servers/${serverId}/channels`),
+  create: (serverId, name, channelType = "voice") =>
+    request(`/servers/${serverId}/channels`, {
+      method: "POST",
+      body: JSON.stringify({ name, channel_type: channelType }),
+    }),
+};
+
+// Voice
+export const voice = {
+  join: (serverId, channelId) =>
+    request(`/servers/${serverId}/channels/${channelId}/voice/join`, { method: "POST" }),
+  leave: (serverId, channelId) =>
+    request(`/servers/${serverId}/channels/${channelId}/voice/leave`, { method: "POST" }),
+  participants: (serverId, channelId) =>
+    request(`/servers/${serverId}/channels/${channelId}/voice/participants`),
+};
+
+// Presence
+export const presence = {
+  heartbeat: () => request("/presence/heartbeat", { method: "POST" }),
+  offline: () => request("/presence/offline", { method: "POST" }),
+};

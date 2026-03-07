@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00ffe5"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0a0a12"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="url(#g)" stroke-width="2.5"/>
+  <!-- S waveform -->
+  <path d="M18 18 Q32 10 32 24 Q32 32 20 32 Q32 32 32 40 Q32 54 46 46"
+        fill="none" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
+  <!-- sound waves -->
+  <path d="M44 24 Q50 32 44 40" fill="none" stroke="#00ffe5" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+  <path d="M48 20 Q56 32 48 44" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+</svg>

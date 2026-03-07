@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "c:\workspace\Synth\backend\test_auth.py", line 16, in <module>
+    assert r.status_code == 201, f"Expected 201, got {r.status_code}"
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError: Expected 201, got 503

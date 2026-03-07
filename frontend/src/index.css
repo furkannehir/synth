@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+
+/* -- Cyberpunk Theme Tokens -- */
+
+@theme {
+  --color-cyber-bg: #0a0a0f;
+  --color-cyber-surface: #12121f;
+  --color-cyber-panel: #1a1a2e;
+  --color-cyber-border: #2a2a3e;
+  --color-cyber-hover: #252540;
+
+  --color-neon-cyan: #00f0ff;
+  --color-neon-pink: #ff00aa;
+  --color-neon-yellow: #f0e030;
+  --color-neon-green: #39ff14;
+  --color-neon-red: #ff3040;
+  --color-neon-purple: #b44aff;
+
+  --color-cyber-text: #e0e0ff;
+  --color-cyber-muted: #6a6a8a;
+
+  --font-mono: "Share Tech Mono", "Fira Code", "Consolas", monospace;
+  --font-display: "Rajdhani", "Orbitron", sans-serif;
+}
+
+/* -- Base styles -- */
+
+body {
+  margin: 0;
+  background-color: var(--color-cyber-bg);
+  color: var(--color-cyber-text);
+  font-family: var(--font-mono);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-cyber-border) transparent;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-neon-cyan) 30%, transparent);
+  color: white;
+}
+
+/* -- Glow utilities -- */
+
+@utility glow-cyan {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-neon-cyan) 40%, transparent),
+              0 0 20px color-mix(in srgb, var(--color-neon-cyan) 15%, transparent);
+}
+
+@utility glow-pink {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-neon-pink) 40%, transparent),
+              0 0 20px color-mix(in srgb, var(--color-neon-pink) 15%, transparent);
+}
+
+@utility glow-green {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-neon-green) 40%, transparent),
+              0 0 20px color-mix(in srgb, var(--color-neon-green) 15%, transparent);
+}
+
+@utility glow-purple {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-neon-purple) 40%, transparent),
+              0 0 20px color-mix(in srgb, var(--color-neon-purple) 15%, transparent);
+}
+
+@utility text-glow-cyan {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-neon-cyan) 60%, transparent),
+               0 0 20px color-mix(in srgb, var(--color-neon-cyan) 20%, transparent);
+}
+
+@utility text-glow-pink {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-neon-pink) 60%, transparent),
+               0 0 20px color-mix(in srgb, var(--color-neon-pink) 20%, transparent);
+}
+
+@utility text-glow-green {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-neon-green) 60%, transparent),
+               0 0 20px color-mix(in srgb, var(--color-neon-green) 20%, transparent);
+}
+
+/* -- Neon border -- */
+
+@utility border-neon-cyan {
+  border: 1px solid var(--color-neon-cyan);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-neon-cyan) 25%, transparent),
+              inset 0 0 4px color-mix(in srgb, var(--color-neon-cyan) 10%, transparent);
+}
+
+@utility border-neon-pink {
+  border: 1px solid var(--color-neon-pink);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-neon-pink) 25%, transparent),
+              inset 0 0 4px color-mix(in srgb, var(--color-neon-pink) 10%, transparent);
+}
+
+/* -- Animated grid background for auth pages -- */
+
+.cyber-grid-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-neon-cyan) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-neon-cyan) 4%, transparent) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: grid-scroll 20s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+}
+
+@keyframes grid-scroll {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(60px, 60px); }
+}
+
+/* -- Floating orb accents -- */
+
+.cyber-grid-bg::after {
+  content: "";
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-neon-cyan) 8%, transparent), transparent 70%);
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: orb-pulse 6s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes orb-pulse {
+  0% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.2); }
+}
+
+/* -- Auth card glass effect -- */
+
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-cyber-surface) 90%, transparent),
+    color-mix(in srgb, var(--color-cyber-panel) 80%, transparent)
+  );
+  backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--color-neon-cyan) 12%, transparent);
+}
+
+.glass-card:hover {
+  border-color: color-mix(in srgb, var(--color-neon-cyan) 20%, transparent);
+}
+
+/* -- Animated logo -- */
+
+@keyframes logo-flicker {
+  0%, 93%, 95%, 97%, 100% { opacity: 1; }
+  94% { opacity: 0.8; }
+  96% { opacity: 0.9; }
+}
+
+@keyframes logo-glow-pulse {
+  0%, 100% {
+    text-shadow:
+      0 0 10px color-mix(in srgb, var(--color-neon-cyan) 60%, transparent),
+      0 0 30px color-mix(in srgb, var(--color-neon-cyan) 30%, transparent),
+      0 0 60px color-mix(in srgb, var(--color-neon-cyan) 10%, transparent);
+  }
+  50% {
+    text-shadow:
+      0 0 15px color-mix(in srgb, var(--color-neon-cyan) 80%, transparent),
+      0 0 40px color-mix(in srgb, var(--color-neon-cyan) 40%, transparent),
+      0 0 80px color-mix(in srgb, var(--color-neon-cyan) 15%, transparent);
+  }
+}
+
+.logo-animated {
+  animation: logo-flicker 4s infinite, logo-glow-pulse 3s ease-in-out infinite;
+}
+
+/* -- Pulse ring for speaking indicator -- */
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-neon-green) 40%, transparent); }
+  70% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-neon-green) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-neon-green) 0%, transparent); }
+}
+
+.speaking-pulse {
+  animation: pulse-ring 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* -- Tooltip -- */
+
+.tooltip-wrapper {
+  position: relative;
+}
+
+.tooltip-wrapper .tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.9);
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  background: var(--color-cyber-panel);
+  color: var(--color-cyber-text);
+  border: 1px solid var(--color-cyber-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 50;
+}
+
+.tooltip-wrapper .tooltip::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: var(--color-cyber-border);
+}
+
+.tooltip-wrapper:hover .tooltip {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+/* -- Waveform bars for voice activity -- */
+
+@keyframes waveform {
+  0%, 100% { height: 4px; }
+  50% { height: 16px; }
+}
+
+.waveform-bar {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-neon-green);
+  animation: waveform 0.8s ease-in-out infinite;
+}
+
+.waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+
+/* -- Subtle noise texture -- */
+
+.noise-texture::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}

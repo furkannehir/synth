@@ -1,0 +1,5 @@
+============================================================
+1) REGISTER  —  POST /api/auth/register
+============================================================
+   Status: 503
+   Body:   {'error': 'Database unavailable. Please try again later.'}

@@ -1,0 +1,22 @@
+# Core
+Flask==3.1.*
+flask-cors==5.*
+python-dotenv==1.*
+
+# Database
+flask-pymongo==2.*
+pymongo==4.*
+
+# Auth
+flask-jwt-extended==4.*
+bcrypt==4.*
+
+# API docs (Swagger UI)
+flask-smorest==0.46.*
+marshmallow==4.*
+
+# LiveKit
+livekit-api==0.7.*
+
+# Production server
+gunicorn==23.*
