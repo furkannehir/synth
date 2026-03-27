@@ -97,6 +97,7 @@ export default function VoicePanel({ channel }) {
         serverUrl={wsUrl}
         token={token}
         connect={true}
+        audio={true}
         onDisconnected={handleLeave}
         className="flex-1 flex flex-col"
       >
@@ -114,7 +115,7 @@ function VoiceConnected({ channel, onLeave }) {
 
   const toggleMute = useCallback(async () => {
     if (!localParticipant) return;
-    await localParticipant.setMicrophoneEnabled(muted);
+    await localParticipant.setMicrophoneEnabled(!muted);
     setMuted(!muted);
   }, [localParticipant, muted]);
 

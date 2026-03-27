@@ -28,6 +28,13 @@ class Config:
     # Media-server adapter to use ("livekit" by default)
     MEDIA_SERVER_ADAPTER = os.getenv("MEDIA_SERVER_ADAPTER", "livekit")
 
+    # Frontend URL (used in password-reset email links)
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    # Resend (HTTP-based email — no SMTP port blocking)
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "Synth <onboarding@resend.dev>")
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

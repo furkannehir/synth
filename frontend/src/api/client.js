@@ -46,6 +46,16 @@ export const auth = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request("/auth/me"),
+  forgotPassword: (email) =>
+    request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token, new_password) =>
+    request("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password }),
+    }),
 };
 
 // Servers

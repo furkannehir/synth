@@ -5,14 +5,16 @@ from app.extensions import mongo
 
 # ── Schema reference ────────────────────────────────────────
 # {
-#   "_id":          ObjectId,
-#   "username":     str   (unique),
-#   "email":        str   (unique),
-#   "password_hash": str,
-#   "avatar":       str | None,
-#   "is_online":    bool,
-#   "last_seen":    datetime,
-#   "created_at":   datetime,
+#   "_id":                ObjectId,
+#   "username":           str   (unique),
+#   "email":              str   (unique),
+#   "password_hash":      str,
+#   "avatar":             str | None,
+#   "is_online":          bool,
+#   "last_seen":          datetime,
+#   "created_at":         datetime,
+#   "reset_token_hash":   str | None,   # SHA-256 of one-time reset token
+#   "reset_token_expires": datetime | None,
 # }
 # ────────────────────────────────────────────────────────────
 
@@ -65,6 +67,39 @@ def set_online(user_id, online: bool = True):
             "is_online": online,
             "last_seen": datetime.now(timezone.utc),
         }},
+    )
+
+
+def set_reset_token(user_id: str, token_hash: str, expires) -> None:
+    """Persist a hashed password-reset token with an expiry timestamp."""
+    from bson import ObjectId
+    get_collection().update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "reset_token_hash": token_hash,
+            "reset_token_expires": expires,
+        }},
+    )
+
+
+def find_by_reset_token(token_hash: str):
+    """Return the user whose reset token matches and has not expired."""
+    from datetime import datetime, timezone
+    return get_collection().find_one({
+        "reset_token_hash": token_hash,
+        "reset_token_expires": {"$gt": datetime.now(timezone.utc)},
+    })
+
+
+def update_password_and_clear_token(user_id: str, new_password_hash: str) -> None:
+    """Set a new password hash and remove the reset token fields."""
+    from bson import ObjectId
+    get_collection().update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {"password_hash": new_password_hash},
+            "$unset": {"reset_token_hash": "", "reset_token_expires": ""},
+        },
     )
 
 

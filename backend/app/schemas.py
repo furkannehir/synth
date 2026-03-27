@@ -52,6 +52,15 @@ class UserResponseSchema(Schema):
     user = fields.Nested(UserSchema)
 
 
+class ForgotPasswordSchema(Schema):
+    email = fields.String(required=True, metadata={"description": "Registered email address"})
+
+
+class ResetPasswordSchema(Schema):
+    token = fields.String(required=True, metadata={"description": "Reset token from email link"})
+    new_password = fields.String(required=True, load_only=True, metadata={"description": "New password (min 6 chars)"})
+
+
 # ── Roles ───────────────────────────────────────────────────
 
 class CreateRoleSchema(Schema):

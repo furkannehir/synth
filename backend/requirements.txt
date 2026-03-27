@@ -10,6 +10,7 @@ pymongo==4.*
 # Auth
 flask-jwt-extended==4.*
 bcrypt==4.*
+resend==2.*
 
 # API docs (Swagger UI)
 flask-smorest==0.46.*
