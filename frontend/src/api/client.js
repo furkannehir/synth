@@ -1,6 +1,6 @@
 const API_BASE = "/api";
 
-function getToken() {
+export function getToken() {
   const t = localStorage.getItem("synth_token");
   if (!t || t === "undefined") return null;
   return t;
@@ -66,6 +66,7 @@ export const servers = {
     request("/servers", { method: "POST", body: JSON.stringify({ name }) }),
   join: (id) => request(`/servers/${id}/join`, { method: "POST" }),
   leave: (id) => request(`/servers/${id}/leave`, { method: "POST" }),
+  members: (id) => request(`/servers/${id}/members`),
 };
 
 // Channels

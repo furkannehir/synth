@@ -141,6 +141,29 @@ def create_app(config_name: str | None = None) -> Flask:
     sweep_thread = threading.Thread(target=_presence_sweep, daemon=True)
     sweep_thread.start()
 
+    # ── Presence cache refresher (background thread) ─────────
+    def _presence_cache_refresh():
+        """
+        Refresh the shared PresenceCache for all watched servers every
+        REFRESH_INTERVAL seconds.  All N SSE clients share this single loop
+        so DB load is O(unique_servers) not O(clients).
+        """
+        import time
+        from app.extensions import presence_cache
+        from app.services.server_service import get_members, ServerError
+        while True:
+            time.sleep(presence_cache.REFRESH_INTERVAL)
+            for server_id in presence_cache.watched_server_ids():
+                try:
+                    with app.app_context():
+                        members = get_members(server_id)
+                        presence_cache.update(server_id, members)
+                except (ServerError, Exception):
+                    pass  # keep running even if one server lookup fails
+
+    cache_thread = threading.Thread(target=_presence_cache_refresh, daemon=True)
+    cache_thread.start()
+
     # ── Serve frontend SPA (production only) ────────────────
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static_frontend")
     if os.path.isdir(static_dir):

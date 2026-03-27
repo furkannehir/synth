@@ -4,6 +4,7 @@ import { usePresence } from "../hooks/usePresence";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelList from "../components/ChannelList";
 import VoicePanel from "../components/VoicePanel";
+import MembersPanel from "../components/MembersPanel";
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -26,6 +27,7 @@ export default function HomePage() {
         onSelect={setActiveChannel}
       />
       <VoicePanel channel={activeChannel} />
+      <MembersPanel server={activeServer} />
     </div>
   );
 }

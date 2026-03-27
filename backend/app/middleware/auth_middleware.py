@@ -9,9 +9,24 @@ from app.models import server as server_model
 
 
 def auth_required(fn):
-    """Decorator that verifies the JWT and injects `current_user` dict."""
+    """
+    Decorator that verifies the JWT and injects `current_user` dict.
+
+    Accepts the token either as:
+    - Authorization: Bearer <token>   (standard — used by all API calls)
+    - ?token=<token>                  (query param — used by EventSource/SSE
+                                       because the browser EventSource API
+                                       cannot set custom headers)
+    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        # If the Authorization header is absent, try the ?token= query param.
+        # We do this by temporarily injecting it into the request environ so
+        # flask-jwt-extended's verify_jwt_in_request() finds it normally.
+        qs_token = request.args.get("token")
+        if qs_token and "Authorization" not in request.headers:
+            request.environ["HTTP_AUTHORIZATION"] = f"Bearer {qs_token}"
+
         verify_jwt_in_request()
         user_id = get_jwt_identity()
         user = user_model.find_by_id(user_id)

@@ -1,5 +1,6 @@
-from flask import request, jsonify
+from flask import request, jsonify, Response, stream_with_context
 from flask_smorest import Blueprint
+import json
 
 from app.middleware.auth_middleware import auth_required, permission_required
 from app.services.server_service import ServerError
@@ -180,3 +181,66 @@ def list_invites(server_id, current_user=None):
     except InviteError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"invites": invites}), 200
+
+
+# ── GET /api/servers/<id>/members/stream  —  SSE presence ───
+@blp.route("/<server_id>/members/stream", methods=["GET"])
+@blp.doc(security=BEARER)
+@auth_required
+def stream_members(server_id, current_user=None):
+    """
+    Server-Sent Events stream of member presence for a server.
+
+    The client opens one long-lived connection.  The server's background
+    cache-refresh thread queries MongoDB every REFRESH_INTERVAL seconds and
+    wakes all sleeping generators via a threading.Condition.  This means
+    N clients watching the same server cost O(1) DB queries per cycle.
+    """
+    from app.extensions import presence_cache
+    from app.services.server_service import get_members
+
+    # Verify the server exists (reuse existing route logic)
+    try:
+        initial_members = get_members(server_id)
+    except ServerError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+
+    presence_cache.register(server_id)
+    # Seed cache immediately so first SSE frame is instant
+    if presence_cache.get(server_id) is None:
+        presence_cache.update(server_id, initial_members)
+
+    def generate():
+        last_payload = None
+        try:
+            # --- First frame: send immediately without waiting ---
+            members = presence_cache.get(server_id) or initial_members
+            payload = json.dumps({"members": members})
+            last_payload = payload
+            yield f"data: {payload}\n\n"
+
+            # --- Subsequent frames: wake on cache update ---
+            while True:
+                presence_cache.wait_for_update(server_id)
+                members = presence_cache.get(server_id)
+                if members is None:
+                    continue
+                payload = json.dumps({"members": members})
+                if payload != last_payload:          # send only when changed
+                    last_payload = payload
+                    yield f"data: {payload}\n\n"
+        except GeneratorExit:
+            pass  # client disconnected
+        finally:
+            presence_cache.unregister(server_id)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # tell Nginx/Render not to buffer
+            "Connection": "keep-alive",
+        },
+    )
+
