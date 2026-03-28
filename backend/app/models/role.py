@@ -27,6 +27,9 @@ ALL_PERMISSIONS = [
     "manage_channels",      # create / edit / delete channels
     "join_channel",         # join a voice channel
     "speak",                # unmute & talk in a channel
+    # Messages
+    "manage_messages",      # delete any message in a text channel
+    "send_messages",        # send messages in text channels
     # Moderation
     "kick_user",            # kick someone from a channel
     "mute_user",            # server-mute another user
@@ -48,6 +51,7 @@ DEFAULT_ROLES = [
         "name": "moderator",
         "permissions": [
             "join_channel", "speak",
+            "send_messages", "manage_messages",
             "kick_user", "mute_user", "join_any_channel",
         ],
         "is_default": False,
@@ -55,7 +59,7 @@ DEFAULT_ROLES = [
     {
         "name": "member",
         "permissions": [
-            "join_channel", "speak",
+            "join_channel", "speak", "send_messages",
         ],
         "is_default": True,
     },

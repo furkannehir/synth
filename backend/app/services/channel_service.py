@@ -149,4 +149,9 @@ def delete_channel(channel_id: str, server_id: str, user_id: str):
     if channel.get("is_default"):
         raise ChannelError("Cannot delete the default channel.", 403)
 
+    # Cascade: remove all messages in the channel
+    from app.models import message as message_model
+    message_model.delete_by_channel(channel_id)
+
     channel_model.delete(channel_id)
+

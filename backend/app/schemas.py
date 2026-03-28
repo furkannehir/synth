@@ -256,3 +256,33 @@ class InviteListSchema(Schema):
 class InviteAcceptResponseSchema(Schema):
     server = fields.Nested(ServerSchema)
     message = fields.String(metadata={"description": "Success message"})
+
+
+# ── Messages ─────────────────────────────────────────────────
+
+class SendMessageSchema(Schema):
+    content = fields.String(required=True, metadata={"description": "Message content (max 2000 chars)"})
+
+
+class EditMessageSchema(Schema):
+    content = fields.String(required=True, metadata={"description": "New message content"})
+
+
+class ChatMessageSchema(Schema):
+    id = fields.String(metadata={"description": "Message ID"})
+    channel_id = fields.String(metadata={"description": "Channel ID"})
+    author_id = fields.String(metadata={"description": "Author user ID"})
+    author_username = fields.String(allow_none=True, metadata={"description": "Author username"})
+    author_avatar = fields.String(allow_none=True, metadata={"description": "Author avatar URL"})
+    content = fields.String(metadata={"description": "Message content"})
+    created_at = fields.String(metadata={"description": "ISO timestamp"})
+    edited_at = fields.String(allow_none=True, metadata={"description": "ISO timestamp of last edit"})
+
+
+class MessageResponseSchema(Schema):
+    message = fields.Nested(ChatMessageSchema)
+
+
+class MessageListSchema(Schema):
+    messages = fields.List(fields.Nested(ChatMessageSchema))
+

@@ -27,3 +27,6 @@ def init_api(app):
 
     from app.routes.invites import blp as invites_blp
     api.register_blueprint(invites_blp)
+
+    from app.routes.messages import blp as messages_blp
+    api.register_blueprint(messages_blp)

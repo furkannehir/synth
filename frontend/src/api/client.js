@@ -107,3 +107,31 @@ export const invites = {
   accept: (code) => request(`/invites/${code}/accept`, { method: "POST" }),
   delete: (code) => request(`/invites/${code}`, { method: "DELETE" }),
 };
+
+// Messages
+export const messages = {
+  list: (channelId, before = null) => {
+    const qs = before ? `?before=${before}` : "";
+    return request(`/channels/${channelId}/messages${qs}`);
+  },
+  send: (channelId, content) =>
+    request(`/channels/${channelId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  edit: (channelId, messageId, content) =>
+    request(`/channels/${channelId}/messages/${messageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+  delete: (channelId, messageId) =>
+    request(`/channels/${channelId}/messages/${messageId}`, {
+      method: "DELETE",
+    }),
+  /** Returns the URL for the SSE event stream (token passed in query param). */
+  eventsUrl: (channelId) => {
+    const token = getToken();
+    return `${API_BASE}/channels/${channelId}/messages/events?token=${token}`;
+  },
+};
+
