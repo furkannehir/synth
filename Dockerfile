@@ -22,4 +22,4 @@ COPY --from=frontend-build /app/frontend/dist ./static_frontend
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--worker-class", "gevent", "--workers", "1", "--worker-connections", "1000", "--timeout", "120", "run:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--worker-class", "gthread", "--workers", "2", "--threads", "100", "--timeout", "120", "run:app"]

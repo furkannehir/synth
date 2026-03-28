@@ -11,7 +11,6 @@ pymongo==4.*
 flask-jwt-extended==4.*
 bcrypt==4.*
 resend==2.*
-gevent==24.*
 
 # API docs (Swagger UI)
 flask-smorest==0.46.*

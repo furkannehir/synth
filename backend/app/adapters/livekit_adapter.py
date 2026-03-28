@@ -51,31 +51,34 @@ class LiveKitAdapter(MediaServerPort):
     # ── helpers ────────────────────────────────────────────
 
     def _run_async(self, coro):
-        """Run an async coroutine synchronously."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+        """
+        Run an async coroutine synchronously, safe under gevent workers.
 
+        ``asyncio.run()`` internally calls ``asyncio.get_event_loop()`` and
+        raises if a loop is already running.  Gevent monkey-patching makes
+        every thread appear to have a running loop, so ``asyncio.run()``
+        always fails under gevent Gunicorn workers.
+
+        Instead we explicitly create a *new* event loop, run the coroutine to
+        completion, and close it — all inside the current thread.  This is
+        fully isolated from gevent's event loop.
+        """
+        loop = asyncio.new_event_loop()
         try:
-            if loop and loop.is_running():
-                # We're inside an already-running loop (e.g. Jupyter / tests).
-                # Create a new loop in a thread instead.
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, coro).result()
-            return asyncio.run(coro)
+            return loop.run_until_complete(coro)
         except (OSError, ConnectionError) as exc:
             raise LiveKitConnectionError(
                 f"Cannot reach LiveKit server at {self._http_url}: {exc}"
             ) from exc
         except Exception as exc:
-            # Catch aiohttp-specific errors without hard-importing aiohttp
             if "ServerDisconnectedError" in type(exc).__name__ or "ClientError" in type(exc).__name__:
                 raise LiveKitConnectionError(
                     f"LiveKit server disconnected ({self._http_url}): {exc}"
                 ) from exc
             raise
+        finally:
+            loop.close()
+
 
     async def _room_op(self, callback):
         """Open a LiveKitAPI session, call *callback*, then close."""
