@@ -1,6 +1,7 @@
 # Environment / secrets
 .env
 backend/.env
+frontend/~/
 
 # Python
 __pycache__/
