@@ -156,8 +156,8 @@ npm run tauri signer generate -- -w ~/.tauri/synth.key
 ```
 
 2. Add these repository secrets in GitHub:
-  - `TAURI_SIGNING_PRIVATE_KEY` (or legacy `TAURI_PRIVATE_KEY`)
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (or legacy `TAURI_KEY_PASSWORD`)
+  - `TAURI_SIGNING_PRIVATE_KEY` (paste the raw base64 content from `~/.tauri/synth.key`; do not decode it)
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (password used when generating the key)
 
 3. Copy the generated public key into `frontend/src-tauri/tauri.conf.json`:
   - `plugins.updater.pubkey`

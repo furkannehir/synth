@@ -65,12 +65,49 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Validate updater signing secrets
+        shell: python
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          import base64
+          import os
+          import sys
+
+          raw_key = os.environ.get("TAURI_SIGNING_PRIVATE_KEY", "").strip()
+          password = os.environ.get("TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "")
+
+          if not raw_key:
+              print("TAURI_SIGNING_PRIVATE_KEY secret is required.")
+              sys.exit(1)
+
+          if not password:
+              print("TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret is required.")
+              sys.exit(1)
+
+          try:
+              decoded_key = base64.b64decode(raw_key, validate=True).decode("utf-8")
+          except Exception:
+              print(
+                  "TAURI_SIGNING_PRIVATE_KEY must be the raw base64 key content "
+                  "from synth.key (do not decode it before saving as a GitHub secret)."
+              )
+              sys.exit(1)
+
+          if not decoded_key.startswith("untrusted comment:"):
+              print(
+                  "Decoded TAURI_SIGNING_PRIVATE_KEY is invalid. "
+                  "Regenerate keys and copy synth.key file content exactly."
+              )
+              sys.exit(1)
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
           tagName: ${{ github.ref_name }}
