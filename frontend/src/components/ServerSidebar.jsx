@@ -1,10 +1,21 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { servers as serversApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { isBrowserRuntime } from "../utils/runtime";
+import { trackEvent } from "../utils/analytics";
 
 export default function ServerSidebar({ activeServer, onSelect }) {
   const { logout, user } = useAuth();
   const [serverList, setServerList] = useState([]);
+  const showDesktopShortcut = isBrowserRuntime();
+
+  const handleDesktopShortcutClick = () => {
+    trackEvent("desktop_cta_clicked", {
+      source: "sidebar",
+      placement: "sidebar-shortcut",
+    });
+  };
 
   useEffect(() => {
     serversApi.list().then((data) => setServerList(data.servers || [])).catch(() => {});
@@ -69,6 +80,19 @@ export default function ServerSidebar({ activeServer, onSelect }) {
         </div>
         <span className="tooltip">{user?.username || "User"}</span>
       </div>
+
+      {showDesktopShortcut && (
+        <div className="tooltip-wrapper">
+          <Link
+            to="/download?src=sidebar"
+            onClick={handleDesktopShortcutClick}
+            className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-cyber-panel/60 text-neon-cyan/60 transition-all duration-300 hover:rounded-lg hover:bg-neon-cyan/10 hover:text-neon-cyan"
+          >
+            ⇩
+          </Link>
+          <span className="tooltip">Download Desktop</span>
+        </div>
+      )}
 
       {/* Logout */}
       <div className="tooltip-wrapper">

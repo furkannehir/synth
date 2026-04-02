@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
+import { isBrowserRuntime } from "../utils/runtime";
+import { trackEvent } from "../utils/analytics";
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const showDesktopDownload = isBrowserRuntime();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +26,13 @@ export default function RegisterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDesktopCtaClick = () => {
+    trackEvent("desktop_cta_clicked", {
+      source: "register",
+      placement: "register-card",
+    });
   };
 
   return (
@@ -114,6 +124,22 @@ export default function RegisterPage() {
             {loading ? "INITIALIZING..." : "REGISTER"}
           </button>
         </form>
+
+        {showDesktopDownload && (
+          <div className="mt-5 rounded-xl border border-neon-cyan/30 bg-neon-cyan/5 p-4">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-cyber-muted">
+              Want the full native experience?
+            </p>
+            <Link
+              to="/download?src=register"
+              onClick={handleDesktopCtaClick}
+              className="mt-2 inline-flex items-center gap-2 text-xs font-display font-semibold uppercase tracking-[0.2em] text-neon-cyan transition-all duration-300 hover:text-glow-cyan"
+            >
+              Download Desktop App
+              <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+        )}
 
         <div className="mt-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-cyber-border" />

@@ -6,6 +6,7 @@ import HomePage from "./pages/HomePage";
 import InvitePage from "./pages/InvitePage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import DownloadPage from "./pages/DownloadPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -59,6 +60,10 @@ export default function App() {
           <Route
             path="/invite/:code"
             element={<InvitePage />}
+          />
+          <Route
+            path="/download"
+            element={<DownloadPage />}
           />
           <Route
             path="/"

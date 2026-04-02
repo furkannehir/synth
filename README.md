@@ -143,6 +143,54 @@ docker run -p 5000:5000 --env-file backend/.env synth
 
 A `render.yaml` blueprint is included for one-click deploy.
 
+### Desktop Releases (Tauri)
+
+Desktop installers are built and published from Git tags via GitHub Actions.
+
+#### One-time setup
+
+1. Generate updater signing keys (from `frontend/`):
+
+```bash
+npm run tauri signer generate -- -w ~/.tauri/synth.key
+```
+
+2. Add these repository secrets in GitHub:
+  - `TAURI_SIGNING_PRIVATE_KEY` (or legacy `TAURI_PRIVATE_KEY`)
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (or legacy `TAURI_KEY_PASSWORD`)
+
+3. Copy the generated public key into `frontend/src-tauri/tauri.conf.json`:
+  - `plugins.updater.pubkey`
+
+#### Releasing a new desktop version
+
+From `frontend/`:
+
+```bash
+npm run release:patch   # or release:minor / release:major
+```
+
+This synchronizes versions across:
+- `frontend/package.json`
+- `frontend/src-tauri/tauri.conf.json`
+- `frontend/src-tauri/Cargo.toml`
+
+Then commit and tag manually:
+
+```bash
+git add frontend/package.json frontend/package-lock.json frontend/src-tauri/tauri.conf.json frontend/src-tauri/Cargo.toml
+git commit -m "chore: release vX.Y.Z"
+git tag vX.Y.Z
+git push origin main --tags
+```
+
+Pushing the `v*` tag triggers `.github/workflows/release.yml`, which builds for Windows, macOS (Intel + ARM), and Linux, then publishes artifacts and updater metadata (`latest.json`) to GitHub Releases.
+
+#### Download page
+
+The app exposes a public desktop download page at `/download`.
+It reads latest assets from `https://api.github.com/repos/furkannehir/synth/releases/latest`.
+
 ## Environment Variables
 
 | Variable | Description | Required |
