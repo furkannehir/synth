@@ -14,6 +14,18 @@ export function clearToken() {
   localStorage.removeItem("synth_token");
 }
 
+function withAuthQuery(url) {
+  const token = getToken();
+  if (!token) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}token=${encodeURIComponent(token)}`;
+}
+
+function sseUrl(path) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return withAuthQuery(`${API_BASE}${normalizedPath}`);
+}
+
 async function request(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...options.headers };
   const token = getToken();
@@ -67,6 +79,7 @@ export const servers = {
   join: (id) => request(`/servers/${id}/join`, { method: "POST" }),
   leave: (id) => request(`/servers/${id}/leave`, { method: "POST" }),
   members: (id) => request(`/servers/${id}/members`),
+  membersStreamUrl: (id) => sseUrl(`/servers/${id}/members/stream`),
 };
 
 // Channels
@@ -129,9 +142,6 @@ export const messages = {
       method: "DELETE",
     }),
   /** Returns the URL for the SSE event stream (token passed in query param). */
-  eventsUrl: (channelId) => {
-    const token = getToken();
-    return `${API_BASE}/channels/${channelId}/messages/events?token=${token}`;
-  },
+  eventsUrl: (channelId) => sseUrl(`/channels/${channelId}/messages/events`),
 };
 

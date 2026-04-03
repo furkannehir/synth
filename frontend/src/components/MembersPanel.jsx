@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getToken } from "../api/client";
+import { servers as serversApi } from "../api/client";
 
 export default function MembersPanel({ server }) {
   const { user: currentUser } = useAuth();
@@ -19,9 +19,8 @@ export default function MembersPanel({ server }) {
 
     if (!server) return;
 
-    // SSE requires auth — pass JWT as query param (EventSource can't set headers)
-    const token = getToken();
-    const url = `/api/servers/${server.id}/members/stream${token ? `?token=${token}` : ""}`;
+    // Build SSE URL from shared API client so desktop release uses configured API host.
+    const url = serversApi.membersStreamUrl(server.id);
     const es = new EventSource(url);
     esRef.current = es;
 
