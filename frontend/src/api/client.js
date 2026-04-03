@@ -75,7 +75,7 @@ export const channels = {
   create: (serverId, name, channelType = "voice") =>
     request(`/servers/${serverId}/channels`, {
       method: "POST",
-      body: JSON.stringify({ name, channel_type: channelType }),
+      body: JSON.stringify({ name, type: channelType }),
     }),
 };
 

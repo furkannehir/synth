@@ -1,6 +1,7 @@
 """Smoke tests for the invite system."""
 import sys
 import os
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -33,6 +34,19 @@ def register(username, email, password):
 
 def headers(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def set_invite_expiry(code, expires_at):
+    with app.app_context():
+        mongo.db.invites.update_one({"code": code}, {"$set": {"expires_at": expires_at}})
+
+
+def cleanup_user(email):
+    with app.app_context():
+        user_ids = [u["_id"] for u in mongo.db.users.find({"email": email}, {"_id": 1})]
+        if user_ids:
+            mongo.db.user_roles.delete_many({"user_id": {"$in": user_ids}})
+        mongo.db.users.delete_many({"email": email})
 
 
 # ── Setup users ─────────────────────────────────────────────
@@ -212,9 +226,13 @@ def test_max_uses():
         headers=headers(r4["access_token"]),
     )
     assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
+    # Exhausted invite should also fail preview.
+    r = client.get(f"/api/invites/{one_use_code}")
+    assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
     # Cleanup 4th user
-    with app.app_context():
-        mongo.db.users.delete_many({"email": "inv_fourth@test.com"})
+    cleanup_user("inv_fourth@test.com")
 
 test("10) Invite with max_uses=1 expires after one use", test_max_uses)
 
@@ -275,11 +293,176 @@ def test_create_invite_with_expiry():
 test("13) Create invite with expiry", test_create_invite_with_expiry)
 
 
+def test_create_invite_uses_backend_default_ttl_when_null():
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={"max_uses": 0, "expires_in_hours": None},
+    )
+    assert r.status_code == 201, f"Expected 201 got {r.status_code}: {r.get_json()}"
+    inv = r.get_json()["invite"]
+    configured_default = app.config.get("INVITE_DEFAULT_EXPIRES_HOURS", 24)
+    if configured_default > 0:
+        assert inv["expires_at"] is not None
+    else:
+        assert inv["expires_at"] is None
+    client.delete(f"/api/invites/{inv['code']}", headers=headers(owner_token))
+
+test("14) Null expires_in_hours uses backend default TTL", test_create_invite_uses_backend_default_ttl_when_null)
+
+
+def test_expired_invite_preview_and_accept():
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={"expires_in_hours": 24},
+    )
+    assert r.status_code == 201
+    code = r.get_json()["invite"]["code"]
+
+    set_invite_expiry(code, datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    r = client.get(f"/api/invites/{code}")
+    assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
+    expired_user = register("inv_expired_user", "inv_expired_user@test.com", "password123")
+    r = client.post(
+        f"/api/invites/{code}/accept",
+        headers=headers(expired_user["access_token"]),
+    )
+    assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
+    cleanup_user("inv_expired_user@test.com")
+    client.delete(f"/api/invites/{code}", headers=headers(owner_token))
+
+test("15) Expired invite blocks preview and accept (410)", test_expired_invite_preview_and_accept)
+
+
+def test_invite_expiry_boundary():
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={"expires_in_hours": 24},
+    )
+    assert r.status_code == 201
+    code = r.get_json()["invite"]["code"]
+
+    # Slightly future expiry should still be accepted by preview.
+    set_invite_expiry(code, datetime.now(timezone.utc) + timedelta(seconds=2))
+    r = client.get(f"/api/invites/{code}")
+    assert r.status_code == 200, f"Expected 200 got {r.status_code}: {r.get_json()}"
+
+    # Move expiry to the past and ensure it is immediately blocked.
+    set_invite_expiry(code, datetime.now(timezone.utc) - timedelta(seconds=1))
+    r = client.get(f"/api/invites/{code}")
+    assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
+    client.delete(f"/api/invites/{code}", headers=headers(owner_token))
+
+test("16) Invite expiry boundary around current time", test_invite_expiry_boundary)
+
+
+def test_single_active_invite_per_creator_per_server():
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={},
+    )
+    assert r.status_code == 201
+    first_code = r.get_json()["invite"]["code"]
+
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={},
+    )
+    assert r.status_code == 201
+    second_code = r.get_json()["invite"]["code"]
+    assert second_code != first_code
+
+    # Older invite should be expired immediately.
+    r = client.get(f"/api/invites/{first_code}")
+    assert r.status_code == 410, f"Expected 410 got {r.status_code}: {r.get_json()}"
+
+    # New invite should be active.
+    r = client.get(f"/api/invites/{second_code}")
+    assert r.status_code == 200, f"Expected 200 got {r.status_code}: {r.get_json()}"
+
+    # List endpoint should only return active invite links.
+    r = client.get(f"/api/servers/{server_id}/invites", headers=headers(owner_token))
+    assert r.status_code == 200
+    codes = [inv["code"] for inv in r.get_json()["invites"]]
+    assert second_code in codes
+    assert first_code not in codes
+
+    client.delete(f"/api/invites/{first_code}", headers=headers(owner_token))
+    client.delete(f"/api/invites/{second_code}", headers=headers(owner_token))
+
+test("17) Creator has only one active invite per server", test_single_active_invite_per_creator_per_server)
+
+
+def test_list_filters_expired_and_exhausted_invites():
+    # Exhausted invite (max_uses=1)
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={"max_uses": 1},
+    )
+    assert r.status_code == 201
+    exhausted_code = r.get_json()["invite"]["code"]
+
+    list_consumer = register("inv_list_consumer", "inv_list_consumer@test.com", "password123")
+    r = client.post(
+        f"/api/invites/{exhausted_code}/accept",
+        headers=headers(list_consumer["access_token"]),
+    )
+    assert r.status_code == 200, f"Expected 200 got {r.status_code}: {r.get_json()}"
+
+    # Expired invite
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={"expires_in_hours": 24},
+    )
+    assert r.status_code == 201
+    expired_code = r.get_json()["invite"]["code"]
+    set_invite_expiry(expired_code, datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    # Active invite
+    r = client.post(
+        f"/api/servers/{server_id}/invites",
+        headers=headers(owner_token),
+        json={},
+    )
+    assert r.status_code == 201
+    active_code = r.get_json()["invite"]["code"]
+
+    r = client.get(f"/api/servers/{server_id}/invites", headers=headers(owner_token))
+    assert r.status_code == 200
+    codes = [inv["code"] for inv in r.get_json()["invites"]]
+    assert active_code in codes
+    assert exhausted_code not in codes
+    assert expired_code not in codes
+
+    cleanup_user("inv_list_consumer@test.com")
+    client.delete(f"/api/invites/{exhausted_code}", headers=headers(owner_token))
+    client.delete(f"/api/invites/{expired_code}", headers=headers(owner_token))
+    client.delete(f"/api/invites/{active_code}", headers=headers(owner_token))
+
+test("18) List endpoint filters expired and exhausted invites", test_list_filters_expired_and_exhausted_invites)
+
+
+def test_mongo_uri_uses_tz_aware_datetimes():
+    assert "tz_aware=true" in app.config["MONGO_URI"].lower(), app.config["MONGO_URI"]
+
+test("19) Mongo URI enables tz-aware datetime decoding", test_mongo_uri_uses_tz_aware_datetimes)
+
+
 def test_accept_invite_no_auth():
     r = client.post(f"/api/invites/{invite_code}/accept")
     assert r.status_code == 401
 
-test("14) Accept invite without auth → 401", test_accept_invite_no_auth)
+test("20) Accept invite without auth → 401", test_accept_invite_no_auth)
 
 
 # ═══════════════════════════════════════════════════════════

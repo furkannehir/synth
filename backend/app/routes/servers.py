@@ -1,4 +1,4 @@
-from flask import request, jsonify, Response, stream_with_context
+from flask import request, jsonify, Response, stream_with_context, current_app
 from flask_smorest import Blueprint
 import json
 
@@ -156,12 +156,16 @@ def get_members(server_id, current_user=None):
 @auth_required
 @permission_required("manage_server")
 def create_invite(data, server_id, current_user=None):
+    expires_in_hours = data.get("expires_in_hours")
+    if expires_in_hours is None:
+        expires_in_hours = current_app.config.get("INVITE_DEFAULT_EXPIRES_HOURS", 24)
+
     try:
         invite = invite_service.create_invite(
             server_id=server_id,
             user_id=str(current_user["_id"]),
             max_uses=data.get("max_uses", 0),
-            expires_in_hours=data.get("expires_in_hours"),
+            expires_in_hours=expires_in_hours,
         )
     except InviteError as exc:
         return jsonify({"error": exc.message}), exc.status_code

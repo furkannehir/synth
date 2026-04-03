@@ -1,6 +1,7 @@
 import os
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.config import config_by_name
 from app.extensions import mongo, jwt
@@ -8,6 +9,16 @@ from app.extensions import mongo, jwt
 
 def create_app(config_name: str | None = None) -> Flask:
     """Application factory."""
+
+    def _append_mongo_uri_option(uri: str, key: str, value: str | int) -> str:
+        parts = urlsplit(uri)
+        query_items = parse_qsl(parts.query, keep_blank_values=True)
+        if any(existing_key.lower() == key.lower() for existing_key, _ in query_items):
+            return uri
+
+        query_items.append((key, str(value)))
+        query = urlencode(query_items)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
     if config_name is None:
         config_name = os.getenv("FLASK_ENV", "development")
@@ -42,11 +53,12 @@ def create_app(config_name: str | None = None) -> Flask:
     # ── Extensions ──────────────────────────────────────────
     CORS(app)
 
-    # Append serverSelectionTimeoutMS to Mongo URI for fast fail
+    # Append Mongo options for fast failure and timezone-aware datetime decoding.
     timeout_ms = app.config.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", 3000)
     uri = app.config["MONGO_URI"]
-    separator = "&" if "?" in uri else "?"
-    app.config["MONGO_URI"] = f"{uri}{separator}serverSelectionTimeoutMS={timeout_ms}"
+    uri = _append_mongo_uri_option(uri, "serverSelectionTimeoutMS", timeout_ms)
+    uri = _append_mongo_uri_option(uri, "tz_aware", "true")
+    app.config["MONGO_URI"] = uri
 
     mongo.init_app(app)
     jwt.init_app(app)
@@ -142,6 +154,23 @@ def create_app(config_name: str | None = None) -> Flask:
 
     sweep_thread = threading.Thread(target=_presence_sweep, daemon=True)
     sweep_thread.start()
+
+    def _invite_sweep():
+        """Periodically remove expired and exhausted invites."""
+        import time
+        while True:
+            time.sleep(60)
+            try:
+                with app.app_context():
+                    from app.services.invite_service import sweep_stale_invites
+                    swept = sweep_stale_invites()
+                    if swept:
+                        app.logger.debug("Invite sweep: %d stale invite(s) deleted.", swept)
+            except Exception:
+                pass  # keep thread alive even if DB is temporarily unreachable
+
+    invite_sweep_thread = threading.Thread(target=_invite_sweep, daemon=True)
+    invite_sweep_thread.start()
 
     # ── Presence cache refresher (background thread) ─────────
     def _presence_cache_refresh():

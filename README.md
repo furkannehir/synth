@@ -198,11 +198,13 @@ It reads latest assets from `https://api.github.com/repos/furkannehir/synth/rele
 | `FLASK_ENV` | `development` or `production` | Yes |
 | `SECRET_KEY` | Flask secret key | Yes |
 | `JWT_SECRET_KEY` | JWT signing key | Yes |
+| `INVITE_DEFAULT_EXPIRES_HOURS` | Backend default invite TTL in hours when `expires_in_hours` is null (set `0` to disable default expiry) | No |
 | `MONGO_URI` | MongoDB connection string | Yes |
 | `LIVEKIT_API_KEY` | LiveKit API key | Yes |
 | `LIVEKIT_API_SECRET` | LiveKit API secret | Yes |
 | `LIVEKIT_URL` | LiveKit WebSocket URL | Yes |
 | `LIVEKIT_HTTP_URL` | LiveKit HTTP API URL | Yes |
+| `VITE_INVITE_CACHE_TTL_HOURS` | Frontend invite cache lifetime in hours (defaults to `24`) | No |
 
 ## License
 

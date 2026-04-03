@@ -19,6 +19,9 @@ class Config:
         hours=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 24))
     )
 
+    # Invites
+    INVITE_DEFAULT_EXPIRES_HOURS = int(os.getenv("INVITE_DEFAULT_EXPIRES_HOURS", 24))
+
     # LiveKit
     LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
     LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
