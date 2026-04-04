@@ -7,6 +7,7 @@ import ChannelList from "../components/ChannelList";
 import VoicePanel from "../components/VoicePanel";
 import TextPanel from "../components/TextPanel";
 import MembersPanel from "../components/MembersPanel";
+import { ServerPresenceProvider } from "../context/ServerPresenceContext";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
 
@@ -93,17 +94,19 @@ export default function HomePage() {
         </div>
       )}
       <ServerSidebar activeServer={activeServer} onSelect={handleServerSelect} />
-      <ChannelList
-        server={activeServer}
-        activeChannel={activeChannel}
-        onSelect={setActiveChannel}
-      />
-      {activeChannel?.type === "text" ? (
-        <TextPanel channel={activeChannel} />
-      ) : (
-        <VoicePanel channel={activeChannel} />
-      )}
-      <MembersPanel server={activeServer} />
+      <ServerPresenceProvider server={activeServer}>
+        <ChannelList
+          server={activeServer}
+          activeChannel={activeChannel}
+          onSelect={setActiveChannel}
+        />
+        {activeChannel?.type === "text" ? (
+          <TextPanel channel={activeChannel} />
+        ) : (
+          <VoicePanel channel={activeChannel} />
+        )}
+        <MembersPanel server={activeServer} />
+      </ServerPresenceProvider>
     </div>
   );
 }

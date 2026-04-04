@@ -207,12 +207,20 @@ class LiveKitAdapter(MediaServerPort):
 
     @staticmethod
     def _to_participant_info(p) -> ParticipantInfo:
+        _SOURCE_MAP = {
+            0: "unknown",
+            1: "camera",
+            2: "microphone",
+            3: "screen_share",
+            4: "screen_share_audio",
+        }
         tracks = [
             TrackInfo(
                 sid=t.sid,
                 name=t.name,
                 kind=("audio" if t.type == 1 else "video" if t.type == 2 else "unknown"),
                 muted=t.muted,
+                source=_SOURCE_MAP.get(t.source, "unknown"),
             )
             for t in p.tracks
         ]

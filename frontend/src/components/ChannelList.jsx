@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { Video, Monitor } from "lucide-react";
 import { channels as channelsApi, invites as invitesApi } from "../api/client";
+import { useServerPresence } from "../context/ServerPresenceContext";
 import { getInviteCacheTtlHours, getInviteCacheTtlMs } from "../utils/runtime";
 
 const INVITE_CACHE_PREFIX = "synth:invite-cache";
@@ -87,6 +89,8 @@ const isCachedInviteExpired = (cachedInvite) => {
 };
 
 export default function ChannelList({ server, activeChannel, onSelect }) {
+  const { voiceChannels } = useServerPresence();
+
   const [channelList, setChannelList] = useState([]);
   const [inviteCode, setInviteCode] = useState(null);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -110,7 +114,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
     channelsApi
       .list(server.id)
       .then((data) => setChannelList(data.channels || []))
-      .catch(() => {});
+      .catch(() => { });
   }, [server]);
 
   if (!server) {
@@ -229,7 +233,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
     }
   };
 
-  const voiceChannels = channelList.filter((c) => c.type === "voice");
+  const voiceChannelsList = channelList.filter((c) => c.type === "voice");
   const textChannels = channelList.filter((c) => c.type === "text");
 
   return (
@@ -261,11 +265,10 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                   type="button"
                   onClick={() => setNewChannelType("text")}
                   className={`flex-1 rounded border px-2 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] transition
-                              ${
-                                newChannelType === "text"
-                                  ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
-                                  : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
-                              }`}
+                              ${newChannelType === "text"
+                      ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
+                      : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
+                    }`}
                 >
                   # Text
                 </button>
@@ -273,11 +276,10 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                   type="button"
                   onClick={() => setNewChannelType("voice")}
                   className={`flex-1 rounded border px-2 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] transition
-                              ${
-                                newChannelType === "voice"
-                                  ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
-                                  : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
-                              }`}
+                              ${newChannelType === "voice"
+                      ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
+                      : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
+                    }`}
                 >
                   O Voice
                 </button>
@@ -425,7 +427,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
           )}
 
           {/* Voice channels */}
-          {voiceChannels.length > 0 && (
+          {voiceChannelsList.length > 0 && (
             <div>
               <div className="px-4 mb-2 flex items-center gap-2">
                 <span className="h-px flex-1 bg-cyber-border/30" />
@@ -441,13 +443,14 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                 </button>
                 <span className="h-px flex-1 bg-cyber-border/30" />
               </div>
-              {voiceChannels.map((ch) => (
+              {voiceChannelsList.map((ch) => (
                 <ChannelItem
                   key={ch.id}
                   channel={ch}
                   active={activeChannel?.id === ch.id}
                   onSelect={onSelect}
                   icon="◈"
+                  participants={voiceChannels[ch.id] || []}
                 />
               ))}
             </div>
@@ -458,25 +461,76 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
   );
 }
 
-function ChannelItem({ channel, active, onSelect, icon }) {
+function ChannelItem({ channel, active, onSelect, icon, participants = [] }) {
+  const isVoice = channel.type === "voice";
+
   return (
-    <button
-      onClick={() => onSelect(channel)}
-      className={`w-full px-3 py-1.5 mx-0 flex items-center gap-2.5 text-sm transition-all duration-200 cursor-pointer
-                  group rounded-none
-                  ${
-                    active
-                      ? "bg-neon-cyan/8 text-neon-cyan border-l-2 border-neon-cyan pl-[10px]"
-                      : "text-cyber-muted hover:text-cyber-text hover:bg-cyber-hover/50 border-l-2 border-transparent pl-[10px]"
-                  }`}
-    >
-      <span className={`text-xs ${active ? "text-neon-cyan/80" : "text-cyber-muted/40 group-hover:text-cyber-muted/70"} transition-colors`}>
-        {icon}
-      </span>
-      <span className="truncate font-display font-medium text-[13px]">{channel.name}</span>
-      {channel.user_limit > 0 && (
-        <span className="ml-auto text-[9px] text-cyber-muted/50 tabular-nums">{channel.user_limit}</span>
+    <div className="flex flex-col">
+      <div
+        className={`w-full px-3 py-1.5 mx-0 flex items-center gap-2.5 text-sm transition-all duration-200
+                    group rounded-none
+                    ${active
+            ? "bg-neon-cyan/8 text-neon-cyan border-l-2 border-neon-cyan pl-[10px]"
+            : "text-cyber-muted hover:text-cyber-text hover:bg-cyber-hover/50 border-l-2 border-transparent pl-[10px]"
+          }`}
+      >
+        <button
+          onClick={() => onSelect(channel)}
+          className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+        >
+          <span className={`text-xs ${active ? "text-neon-cyan/80" : "text-cyber-muted/40 group-hover:text-cyber-muted/70"} transition-colors`}>
+            {icon}
+          </span>
+          <span className="truncate font-display font-medium text-[13px]">{channel.name}</span>
+        </button>
+
+        <div className="flex items-center gap-1.5 ml-auto">
+          {channel.user_limit > 0 && (
+            <span className="text-[9px] text-cyber-muted/50 tabular-nums">{channel.user_limit}</span>
+          )}
+          {isVoice && !active && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelect(channel); }}
+              title="Join voice channel"
+              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center
+                         text-[10px] text-neon-green/70 bg-neon-green/10 border border-neon-green/20
+                         hover:bg-neon-green/20 hover:text-neon-green hover:border-neon-green/40
+                         transition-all cursor-pointer"
+            >
+              ▶
+            </button>
+          )}
+        </div>
+      </div>
+
+      {participants.length > 0 && (
+        <div className="flex flex-col gap-1 px-4 pb-2 pt-1 pl-[28px]">
+          {participants.map((p) => {
+            const isCamOn = p.tracks?.some(t => t.source === "camera" && !t.muted);
+            const isScreenOn = p.tracks?.some(t => t.source === "screen_share" && !t.muted);
+
+            return (
+              <div key={p.identity} className="flex items-center gap-2 group cursor-default">
+                <div className="w-5 h-5 rounded-full bg-cyber-surface/50 border border-neon-cyan/20 flex items-center justify-center text-[8px] font-bold text-neon-cyan/80">
+                  {(p.name || "?").slice(0, 2).toUpperCase()}
+                </div>
+                <span className="text-[11px] text-cyber-muted group-hover:text-neon-cyan/80 truncate flex-1 font-medium transition-colors">
+                  {p.name}
+                </span>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {isCamOn && (
+                    <Video size={10} className="text-neon-cyan/70 drop-shadow-[0_0_2px_rgba(0,255,255,0.4)]" />
+                  )}
+                  {isScreenOn && (
+                    <Monitor size={10} className="text-neon-purple/70 drop-shadow-[0_0_2px_rgba(188,19,254,0.4)]" />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
-    </button>
+    </div>
   );
 }

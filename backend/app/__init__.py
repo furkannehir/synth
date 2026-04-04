@@ -179,18 +179,63 @@ def create_app(config_name: str | None = None) -> Flask:
         REFRESH_INTERVAL seconds.  All N SSE clients share this single loop
         so DB load is O(unique_servers) not O(clients).
         """
-        import time
         from app.extensions import presence_cache
         from app.services.server_service import get_members, ServerError
+        import app.extensions as ext
+
         while True:
-            time.sleep(presence_cache.REFRESH_INTERVAL)
+            # Block until an endpoint calls mark_dirty() OR the interval expires
+            presence_cache.wait_for_dirty(timeout=presence_cache.REFRESH_INTERVAL)
+            
+            # 1. Fetch all LiveKit rooms once per cycle to minimize overhead
+            all_rooms = []
+            if ext.media_server:
+                try:
+                    all_rooms = ext.media_server.list_rooms()
+                except Exception as e:
+                    pass
+
             for server_id in presence_cache.watched_server_ids():
                 try:
                     with app.app_context():
                         members = get_members(server_id)
-                        presence_cache.update(server_id, members)
+                        
+                        voice_channels = {}
+                        if ext.media_server:
+                            prefix = f"synth_{server_id}_"
+                            server_rooms = [r for r in all_rooms if r.name.startswith(prefix)]
+                            
+                            for room in server_rooms:
+                                channel_id = room.name[len(prefix):]
+                                try:
+                                    participants = ext.media_server.list_participants(room.name)
+                                    voice_channels[channel_id] = [
+                                        {
+                                            "identity": p.identity,
+                                            "name": p.name,
+                                            "state": p.state,
+                                            "tracks": [
+                                                {
+                                                    "sid": t.sid,
+                                                    "name": t.name,
+                                                    "kind": t.kind,
+                                                    "muted": t.muted,
+                                                    "source": t.source,
+                                                }
+                                                for t in p.tracks
+                                            ],
+                                        }
+                                        for p in participants
+                                    ]
+                                except Exception:
+                                    pass
+                                    
+                        presence_cache.update(server_id, {
+                            "members": members,
+                            "voice_channels": voice_channels
+                        })
                 except (ServerError, Exception):
-                    pass  # keep running even if one server lookup fails
+                    pass  # keep running even if one lookup fails
 
     cache_thread = threading.Thread(target=_presence_cache_refresh, daemon=True)
     cache_thread.start()

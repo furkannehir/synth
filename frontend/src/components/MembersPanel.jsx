@@ -1,51 +1,9 @@
-import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { servers as serversApi } from "../api/client";
+import { useServerPresence } from "../context/ServerPresenceContext";
 
 export default function MembersPanel({ server }) {
   const { user: currentUser } = useAuth();
-  const [members, setMembers] = useState([]);
-  const [connected, setConnected] = useState(false);
-  const esRef = useRef(null);
-
-  useEffect(() => {
-    // Close any existing SSE stream when server changes
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-      setConnected(false);
-      setMembers([]);
-    }
-
-    if (!server) return;
-
-    // Build SSE URL from shared API client so desktop release uses configured API host.
-    const url = serversApi.membersStreamUrl(server.id);
-    const es = new EventSource(url);
-    esRef.current = es;
-
-    es.onopen = () => setConnected(true);
-
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        setMembers(data.members || []);
-        setConnected(true);
-      } catch {
-        // malformed frame — ignore
-      }
-    };
-
-    es.onerror = () => {
-      // Browser auto-reconnects; just reflect disconnected state
-      setConnected(false);
-    };
-
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-  }, [server]);
+  const { members, connected } = useServerPresence();
 
   const online = members.filter((m) => m.is_online);
   const offline = members.filter((m) => !m.is_online);

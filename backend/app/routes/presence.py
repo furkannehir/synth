@@ -4,6 +4,7 @@ from flask_smorest import Blueprint
 from app.middleware.auth_middleware import auth_required
 from app.services import presence_service
 from app.models import user as user_model
+from app.extensions import presence_cache
 from app.schemas import MessageSchema, UserResponseSchema
 
 blp = Blueprint(
@@ -23,6 +24,7 @@ BEARER = [{"BearerAuth": []}]
 def heartbeat(current_user=None):
     """Client calls this every ~30 s to stay online."""
     user = presence_service.heartbeat(str(current_user["_id"]))
+    presence_cache.mark_dirty()
     return jsonify({"user": user}), 200
 
 
@@ -34,4 +36,5 @@ def heartbeat(current_user=None):
 def go_offline(current_user=None):
     """Explicitly mark the current user as offline."""
     presence_service.go_offline(str(current_user["_id"]))
+    presence_cache.mark_dirty()
     return jsonify({"message": "You are now offline."}), 200

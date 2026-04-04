@@ -12,6 +12,7 @@ from app.middleware.auth_middleware import auth_required, permission_required
 from app.services import voice_service
 from app.services.voice_service import VoiceError
 from app.adapters.livekit_adapter import LiveKitConnectionError
+from app.extensions import presence_cache
 from app.schemas import (
     JoinVoiceResponseSchema,
     MessageSchema,
@@ -53,6 +54,7 @@ def join_voice(server_id, channel_id, current_user=None):
         )
     except VoiceError as exc:
         return jsonify({"error": exc.message}), exc.status_code
+    presence_cache.mark_dirty()
     return jsonify(result), 200
 
 
@@ -72,6 +74,9 @@ def leave_voice(server_id, channel_id, current_user=None):
         )
     except VoiceError as exc:
         return jsonify({"error": exc.message}), exc.status_code
+    # Optimistically patch cache so SSE reflects the leave instantly,
+    # even if LiveKit hasn't fully processed the removal yet.
+    presence_cache.remove_voice_participant(server_id, channel_id, str(current_user["_id"]))
     return jsonify({"message": "Left the voice channel."}), 200
 
 

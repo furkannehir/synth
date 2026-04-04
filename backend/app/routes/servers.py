@@ -212,24 +212,30 @@ def stream_members(server_id, current_user=None):
     presence_cache.register(server_id)
     # Seed cache immediately so first SSE frame is instant
     if presence_cache.get(server_id) is None:
-        presence_cache.update(server_id, initial_members)
+        presence_cache.update(server_id, {"members": initial_members, "voice_channels": {}})
 
     def generate():
         last_payload = None
         try:
             # --- First frame: send immediately without waiting ---
-            members = presence_cache.get(server_id) or initial_members
-            payload = json.dumps({"members": members})
+            cached_data = presence_cache.get(server_id)
+            if not isinstance(cached_data, dict):
+                cached_data = {"members": cached_data or initial_members, "voice_channels": {}}
+                
+            payload = json.dumps(cached_data)
             last_payload = payload
             yield f"data: {payload}\n\n"
 
             # --- Subsequent frames: wake on cache update ---
             while True:
                 presence_cache.wait_for_update(server_id)
-                members = presence_cache.get(server_id)
-                if members is None:
+                cached_data = presence_cache.get(server_id)
+                if cached_data is None:
                     continue
-                payload = json.dumps({"members": members})
+                if not isinstance(cached_data, dict):
+                    cached_data = {"members": cached_data, "voice_channels": {}}
+                    
+                payload = json.dumps(cached_data)
                 if payload != last_payload:          # send only when changed
                     last_payload = payload
                     yield f"data: {payload}\n\n"

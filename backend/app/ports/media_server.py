@@ -20,6 +20,7 @@ class TrackInfo:
     name: str = ""
     kind: str = ""  # "audio" | "video"
     muted: bool = False
+    source: str = ""  # "camera" | "microphone" | "screen_share" | "screen_share_audio"
 
 
 @dataclass

@@ -14,24 +14,18 @@ media_server = None
 
 
 class PresenceCache:
-    """
-    Thread-safe in-memory cache of server member lists.
-
-    One background thread refreshes watched servers every REFRESH_INTERVAL
-    seconds.  SSE generator coroutines call `wait_for_update()` which blocks
-    until new data arrives (or the timeout expires), so they never busy-spin.
-
-    This means N clients watching the same server share O(1) DB queries per
-    refresh cycle instead of O(N) with client-side polling.
-    """
-
-    REFRESH_INTERVAL = 5  # seconds between DB refreshes
+    REFRESH_INTERVAL = 3  # seconds between DB refreshes
 
     def __init__(self):
         self._cache: dict[str, list] = {}          # server_id → members list
         self._watchers: dict[str, int] = {}         # server_id → watcher count
         self._conditions: dict[str, threading.Condition] = {}
         self._lock = threading.Lock()
+        # Event that endpoints can set to request an immediate refresh cycle
+        self._dirty = threading.Event()
+        # Tombstones: identity -> expiry timestamp.
+        # Prevents re-adding a leaving participant if LiveKit is slow to purge them.
+        self._tombstones: dict[str, float] = {}
 
     # ── Watcher registration ─────────────────────────────────
     def register(self, server_id: str) -> None:
@@ -53,13 +47,23 @@ class PresenceCache:
             return list(self._watchers.keys())
 
     # ── Cache update (called by background thread) ───────────
-    def update(self, server_id: str, members: list) -> None:
+    def update(self, server_id: str, payload: dict) -> None:
+        import time
+        now = time.time()
         with self._lock:
+            # Clear expired tombstones
+            self._tombstones = {uid: exp for uid, exp in self._tombstones.items() if exp > now}
+            
+            # Filter participants
+            voice_channels = payload.get("voice_channels", {})
+            for ch_id, participants in voice_channels.items():
+                voice_channels[ch_id] = [p for p in participants if p.get("identity") not in self._tombstones]
+                
+            self._cache[server_id] = payload
             cond = self._conditions.get(server_id)
-        self._cache[server_id] = members
-        if cond:
-            with cond:
-                cond.notify_all()  # wake up all waiting SSE generators
+            if cond:
+                with cond:
+                    cond.notify_all()
 
     def get(self, server_id: str):
         return self._cache.get(server_id)
@@ -72,6 +76,45 @@ class PresenceCache:
         if cond:
             with cond:
                 cond.wait(timeout=timeout)
+
+    # ── Immediate refresh trigger ─────────────────────────────
+    def mark_dirty(self) -> None:
+        """Signal the background thread to refresh immediately."""
+        self._dirty.set()
+
+    def wait_for_dirty(self, timeout: float = REFRESH_INTERVAL) -> bool:
+        """Block until mark_dirty() is called or timeout expires. Returns True if dirty."""
+        was_set = self._dirty.wait(timeout=timeout)
+        self._dirty.clear()
+        return was_set
+
+    # ── Optimistic cache patching ─────────────────────────────
+    def remove_voice_participant(self, server_id: str, channel_id: str, identity: str) -> None:
+        """
+        Immediately remove a participant from the cached voice_channels
+        for a server, then wake SSE generators.  This avoids the race
+        where LiveKit hasn't fully processed the removal yet when the
+        background thread re-queries.
+        """
+        import time
+        with self._lock:
+            # Tombstone for 5s to prevent immediate re-add by the background polling thread
+            self._tombstones[identity] = time.time() + 5.0
+            
+            cached = self._cache.get(server_id)
+            if not isinstance(cached, dict):
+                return
+            vc = cached.get("voice_channels", {})
+            participants = vc.get(channel_id)
+            if participants is None:
+                return
+            vc[channel_id] = [p for p in participants if p.get("identity") != identity]
+            
+            # Wake SSE generators with the patched data
+            cond = self._conditions.get(server_id)
+            if cond:
+                with cond:
+                    cond.notify_all()
 
 
 presence_cache = PresenceCache()
