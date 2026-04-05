@@ -8,6 +8,10 @@ A real-time voice channel web application inspired by Discord, built with a cybe
 ![LiveKit](https://img.shields.io/badge/LiveKit-WebRTC-purple)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-brightgreen)
 
+## Try this on
+
+https://synth-vf4q.onrender.com/
+
 ## Features
 
 - **Voice Channels** — Real-time voice chat powered by LiveKit (WebRTC)
