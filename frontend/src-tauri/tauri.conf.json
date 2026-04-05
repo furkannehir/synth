@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "synth",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.synth.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -42,7 +42,7 @@
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5MTgyNDdCM0NFMEUzMDUKUldRRjQrQThleVFZK2Q1b2VncnNnZ0hFSFZqSUFxbTNhbGdnK3dmT0M0VkFJMUhIMGlSdmtNanAK",
       "windows": {
-        "installMode": "passive"
+        "installMode": "basicUi"
       }
     }
   }
