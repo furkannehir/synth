@@ -100,11 +100,15 @@ export default function HomePage() {
           activeChannel={activeChannel}
           onSelect={setActiveChannel}
         />
-        {activeChannel?.type === "text" ? (
-          <TextPanel channel={activeChannel} />
-        ) : (
-          <VoicePanel channel={activeChannel} />
-        )}
+        <div className="flex-1 overflow-hidden relative flex">
+          {activeChannel?.type === "text" && (
+            <TextPanel channel={activeChannel} />
+          )}
+          <VoicePanel 
+            activeChannel={activeChannel} 
+            onNavigate={(channel) => setActiveChannel(channel)} 
+          />
+        </div>
         <MembersPanel server={activeServer} />
       </ServerPresenceProvider>
     </div>
