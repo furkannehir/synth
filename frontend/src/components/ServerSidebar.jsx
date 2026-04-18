@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { servers as serversApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
 
 export default function ServerSidebar({ activeServer, onSelect, globalUnreadCount }) {
   const { logout, user } = useAuth();
+  const { theme, setTheme, availableThemes } = useTheme();
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [serverList, setServerList] = useState([]);
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [newServerName, setNewServerName] = useState("");
@@ -144,6 +147,17 @@ export default function ServerSidebar({ activeServer, onSelect, globalUnreadCoun
           <span className="tooltip">{user?.username || "User"}</span>
         </div>
 
+        {/* Theme Picker */}
+        <div className="tooltip-wrapper">
+          <button
+            onClick={() => setShowThemePicker(true)}
+            className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-cyber-panel/60 text-neon-yellow/60 transition-all duration-300 hover:rounded-lg hover:bg-neon-yellow/10 hover:text-neon-yellow text-sm"
+          >
+            🎨
+          </button>
+          <span className="tooltip">Theme Picker</span>
+        </div>
+
         {showDesktopShortcut && (
           <div className="tooltip-wrapper">
             <Link
@@ -210,6 +224,40 @@ export default function ServerSidebar({ activeServer, onSelect, globalUnreadCoun
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showThemePicker && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-cyber-bg/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-neon-cyan/30 bg-cyber-surface p-4 shadow-[0_0_30px_rgba(0,255,255,0.08)]">
+            <h3 className="text-sm font-display font-bold uppercase tracking-[0.18em] text-neon-cyan mb-3">
+              Appearance
+            </h3>
+            <div className="flex flex-col gap-2">
+              {availableThemes.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`px-4 py-3 rounded-lg text-left text-sm font-display transition-all ${
+                    theme === t.id
+                      ? "bg-neon-cyan/20 border border-neon-cyan text-neon-cyan"
+                      : "bg-cyber-panel border border-cyber-border/50 text-cyber-text hover:bg-cyber-hover hover:border-cyber-border"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end">
+               <button
+                  type="button"
+                  onClick={() => setShowThemePicker(false)}
+                  className="rounded-md border border-cyber-border px-3 py-1.5 text-[11px] font-display uppercase tracking-[0.16em] text-cyber-muted transition hover:border-cyber-muted/70 hover:text-cyber-text"
+                >
+                  Done
+                </button>
+            </div>
           </div>
         </div>
       )}

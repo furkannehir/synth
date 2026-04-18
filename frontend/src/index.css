@@ -3,6 +3,7 @@
 
 /* -- Cyberpunk Theme Tokens -- */
 
+/* -- Cyberpunk Theme Tokens (Default) -- */
 @theme {
   --color-cyber-bg: #0a0a0f;
   --color-cyber-surface: #12121f;
@@ -20,8 +21,98 @@
   --color-cyber-text: #e0e0ff;
   --color-cyber-muted: #6a6a8a;
 
-  --font-mono: "Share Tech Mono", "Fira Code", "Consolas", monospace;
+  --font-mono: "Share Tech Mono", "Fira Code", monospace;
   --font-display: "Rajdhani", "Orbitron", sans-serif;
+}
+
+.theme-cyberpunk {
+  --color-cyber-bg: #0a0a0f;
+  --color-cyber-surface: #12121f;
+  --color-cyber-panel: #1a1a2e;
+  --color-cyber-border: #2a2a3e;
+  --color-cyber-hover: #252540;
+  --color-neon-cyan: #00f0ff;
+  --color-neon-pink: #ff00aa;
+  --color-neon-yellow: #f0e030;
+  --color-neon-green: #39ff14;
+  --color-neon-red: #ff3040;
+  --color-neon-purple: #b44aff;
+  --color-cyber-text: #e0e0ff;
+  --color-cyber-muted: #6a6a8a;
+  --font-mono: "Share Tech Mono", "Fira Code", monospace;
+  --font-display: "Rajdhani", "Orbitron", sans-serif;
+}
+
+.theme-vaporwave {
+  --color-cyber-bg: #11051f;
+  --color-cyber-surface: #1e0b35;
+  --color-cyber-panel: #2d144d;
+  --color-cyber-border: #462277;
+  --color-cyber-hover: #381a60;
+  --color-neon-cyan: #05d9e8;
+  --color-neon-pink: #ff007f;
+  --color-neon-yellow: #f1c40f;
+  --color-neon-green: #01ffc3;
+  --color-neon-red: #ff2a6d;
+  --color-neon-purple: #b537f2;
+  --color-cyber-text: #f0e6fa;
+  --color-cyber-muted: #9583b2;
+  --font-mono: "Space Mono", "Fira Code", monospace;
+  --font-display: "Righteous", "Orbitron", sans-serif;
+}
+
+.theme-nord {
+  --color-cyber-bg: #2e3440;
+  --color-cyber-surface: #3b4252;
+  --color-cyber-panel: #434c5e;
+  --color-cyber-border: #4c566a;
+  --color-cyber-hover: #4c566a;
+  --color-neon-cyan: #88c0d0;
+  --color-neon-pink: #b48ead;
+  --color-neon-yellow: #ebcb8b;
+  --color-neon-green: #a3be8c;
+  --color-neon-red: #bf616a;
+  --color-neon-purple: #5e81ac;
+  --color-cyber-text: #eceff4;
+  --color-cyber-muted: #d8dee9;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-display: "Inter", "Roboto", sans-serif;
+}
+
+.theme-dark-elegance {
+  --color-cyber-bg: #09090b;
+  --color-cyber-surface: #18181b;
+  --color-cyber-panel: #27272a;
+  --color-cyber-border: #3f3f46;
+  --color-cyber-hover: #3f3f46;
+  --color-neon-cyan: #38bdf8;
+  --color-neon-pink: #f472b6;
+  --color-neon-yellow: #fbbf24;
+  --color-neon-green: #34d399;
+  --color-neon-red: #f87171;
+  --color-neon-purple: #818cf8;
+  --color-cyber-text: #fafafa;
+  --color-cyber-muted: #a1a1aa;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-display: "Manrope", "Inter", sans-serif;
+}
+
+.theme-light-mode {
+  --color-cyber-bg: #f9fafb;
+  --color-cyber-surface: #ffffff;
+  --color-cyber-panel: #f3f4f6;
+  --color-cyber-border: #e5e7eb;
+  --color-cyber-hover: #e5e7eb;
+  --color-neon-cyan: #2563eb;
+  --color-neon-pink: #db2777;
+  --color-neon-yellow: #d97706;
+  --color-neon-green: #16a34a;
+  --color-neon-red: #dc2626;
+  --color-neon-purple: #7e22ce;
+  --color-cyber-text: #111827;
+  --color-cyber-muted: #4b5563;
+  --font-mono: "Fira Code", monospace;
+  --font-display: "Outfit", "Inter", sans-serif;
 }
 
 /* -- Base styles -- */

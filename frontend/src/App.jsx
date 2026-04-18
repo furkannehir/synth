@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
@@ -39,39 +40,41 @@ function GuestRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route
-            path="/login"
-            element={<GuestRoute><LoginPage /></GuestRoute>}
-          />
-          <Route
-            path="/register"
-            element={<GuestRoute><RegisterPage /></GuestRoute>}
-          />
-          <Route
-            path="/forgot-password"
-            element={<GuestRoute><ForgotPasswordPage /></GuestRoute>}
-          />
-          <Route
-            path="/reset-password"
-            element={<GuestRoute><ResetPasswordPage /></GuestRoute>}
-          />
-          <Route
-            path="/invite/:code"
-            element={<InvitePage />}
-          />
-          <Route
-            path="/download"
-            element={<DownloadPage />}
-          />
-          <Route
-            path="/"
-            element={<ProtectedRoute><HomePage /></ProtectedRoute>}
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/login"
+              element={<GuestRoute><LoginPage /></GuestRoute>}
+            />
+            <Route
+              path="/register"
+              element={<GuestRoute><RegisterPage /></GuestRoute>}
+            />
+            <Route
+              path="/forgot-password"
+              element={<GuestRoute><ForgotPasswordPage /></GuestRoute>}
+            />
+            <Route
+              path="/reset-password"
+              element={<GuestRoute><ResetPasswordPage /></GuestRoute>}
+            />
+            <Route
+              path="/invite/:code"
+              element={<InvitePage />}
+            />
+            <Route
+              path="/download"
+              element={<DownloadPage />}
+            />
+            <Route
+              path="/"
+              element={<ProtectedRoute><HomePage /></ProtectedRoute>}
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
