@@ -30,3 +30,9 @@ def init_api(app):
 
     from app.routes.messages import blp as messages_blp
     api.register_blueprint(messages_blp)
+
+    from app.routes.friends import blp as friends_blp
+    api.register_blueprint(friends_blp)
+
+    from app.routes.dms import blp as dms_blp
+    api.register_blueprint(dms_blp)

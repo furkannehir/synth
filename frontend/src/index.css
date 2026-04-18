@@ -205,6 +205,17 @@ body {
   animation: pulse-ring 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* -- Online status pulse -- */
+
+@keyframes online-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-neon-green) 40%, transparent); }
+  50% { box-shadow: 0 0 4px 1px color-mix(in srgb, var(--color-neon-green) 30%, transparent); }
+}
+
+.online-pulse {
+  animation: online-glow 2s ease-in-out infinite;
+}
+
 /* -- Screen Share Pulse -- */
 
 @keyframes screen-share-pulse {

@@ -157,22 +157,22 @@ def channel_events(channel_id, current_user=None):
         # Return a plain 403 — EventSource ignores non-2xx gracefully
         return jsonify({"error": exc.message}), exc.status_code
 
-    channel_event_bus.subscribe(channel_id)
+    q = channel_event_bus.subscribe(channel_id)
 
     def generate():
+        import queue
         try:
             # Send a keep-alive comment immediately so the browser knows the stream is open
             yield ": connected\n\n"
             while True:
-                events = channel_event_bus.wait_for_event(channel_id, timeout=25.0)
-                if not events:
+                try:
+                    event = q.get(timeout=25.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
                     # Heartbeat to prevent proxy timeouts
                     yield ": heartbeat\n\n"
-                    continue
-                for event in events:
-                    yield f"data: {json.dumps(event)}\n\n"
         finally:
-            channel_event_bus.unsubscribe(channel_id)
+            channel_event_bus.unsubscribe(channel_id, q)
 
     return Response(
         stream_with_context(generate()),

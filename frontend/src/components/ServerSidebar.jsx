@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
 
-export default function ServerSidebar({ activeServer, onSelect }) {
+export default function ServerSidebar({ activeServer, onSelect, globalUnreadCount }) {
   const { logout, user } = useAuth();
   const [serverList, setServerList] = useState([]);
   const [showCreateServer, setShowCreateServer] = useState(false);
@@ -76,9 +76,14 @@ export default function ServerSidebar({ activeServer, onSelect }) {
             className="w-12 h-12 rounded-2xl bg-gradient-to-br from-neon-cyan/20 to-neon-cyan/5
                      text-neon-cyan font-display font-bold
                      text-lg flex items-center justify-center hover:rounded-xl hover:from-neon-cyan/30 hover:to-neon-cyan/10
-                     transition-all duration-300 cursor-pointer glow-cyan mb-1"
+                     transition-all duration-300 cursor-pointer glow-cyan mb-1 relative"
           >
             S
+            {globalUnreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-neon-pink text-cyber-bg text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-cyber-surface">
+                {globalUnreadCount > 99 ? "99+" : globalUnreadCount}
+              </span>
+            )}
           </button>
           <span className="tooltip">Home</span>
         </div>

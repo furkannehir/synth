@@ -13,6 +13,7 @@ from app.extensions import mongo
 #   "is_online":          bool,
 #   "last_seen":          datetime,
 #   "created_at":         datetime,
+#   "friends":            [ObjectId],   # list of friend user IDs
 #   "reset_token_hash":   str | None,   # SHA-256 of one-time reset token
 #   "reset_token_expires": datetime | None,
 # }
@@ -55,6 +56,7 @@ def create(username: str, email: str, password_hash: str) -> str:
         "is_online": False,
         "last_seen": datetime.now(timezone.utc),
         "created_at": datetime.now(timezone.utc),
+        "friends": [],
     })
     return str(result.inserted_id)
 
@@ -103,6 +105,58 @@ def update_password_and_clear_token(user_id: str, new_password_hash: str) -> Non
     )
 
 
+# ── Friend management ───────────────────────────────────────
+
+def add_friend(user_id: str, friend_id: str):
+    """Add friend to both users' friends lists (bidirectional)."""
+    from bson import ObjectId
+    col = get_collection()
+    col.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$addToSet": {"friends": ObjectId(friend_id)}},
+    )
+    col.update_one(
+        {"_id": ObjectId(friend_id)},
+        {"$addToSet": {"friends": ObjectId(user_id)}},
+    )
+
+
+def remove_friend(user_id: str, friend_id: str):
+    """Remove friend from both users' friends lists (bidirectional)."""
+    from bson import ObjectId
+    col = get_collection()
+    col.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$pull": {"friends": ObjectId(friend_id)}},
+    )
+    col.update_one(
+        {"_id": ObjectId(friend_id)},
+        {"$pull": {"friends": ObjectId(user_id)}},
+    )
+
+
+def are_friends(user_id: str, friend_id: str) -> bool:
+    """Check if two users are friends."""
+    from bson import ObjectId
+    user = get_collection().find_one(
+        {"_id": ObjectId(user_id), "friends": ObjectId(friend_id)},
+        {"_id": 1},
+    )
+    return user is not None
+
+
+def get_friends(user_id: str) -> list:
+    """Return the full user documents for all friends of a user."""
+    from bson import ObjectId
+    user = find_by_id(user_id)
+    if not user:
+        return []
+    friend_ids = user.get("friends", [])
+    if not friend_ids:
+        return []
+    return list(get_collection().find({"_id": {"$in": friend_ids}}))
+
+
 def to_dict(user: dict, include_roles: bool = True, server_id: str | None = None) -> dict:
     """Serialize a user document for API responses (no password)."""
     if user is None:
@@ -115,6 +169,7 @@ def to_dict(user: dict, include_roles: bool = True, server_id: str | None = None
         "is_online": user.get("is_online", False),
         "last_seen": user.get("last_seen", "").isoformat() if user.get("last_seen") else None,
         "created_at": user.get("created_at", "").isoformat() if user.get("created_at") else None,
+        "friends": [str(fid) for fid in user.get("friends", [])],
     }
     if include_roles:
         from app.models import role as role_model

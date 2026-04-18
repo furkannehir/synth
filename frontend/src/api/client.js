@@ -145,3 +145,49 @@ export const messages = {
   eventsUrl: (channelId) => sseUrl(`/channels/${channelId}/messages/events`),
 };
 
+// Friends
+export const friends = {
+  list: () => request("/friends"),
+  pending: () => request("/friends/pending"),
+  sendRequest: (username) =>
+    request("/friends/request", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+  accept: (requestId) =>
+    request(`/friends/${requestId}/accept`, { method: "POST" }),
+  reject: (requestId) =>
+    request(`/friends/${requestId}/reject`, { method: "POST" }),
+  cancel: (requestId) =>
+    request(`/friends/${requestId}/cancel`, { method: "POST" }),
+  remove: (friendId) =>
+    request(`/friends/${friendId}`, { method: "DELETE" }),
+};
+
+// Direct Messages
+export const dms = {
+  unreadCount: () => request("/dms/unread_count"),
+  conversations: (offset = 0, limit = 20) =>
+    request(`/dms/conversations?offset=${offset}&limit=${limit}`),
+  list: (friendId, before = null) => {
+    const qs = before ? `?before=${before}` : "";
+    return request(`/dms/${friendId}/messages${qs}`);
+  },
+  send: (friendId, content) =>
+    request(`/dms/${friendId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  edit: (friendId, dmId, content) =>
+    request(`/dms/${friendId}/messages/${dmId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+  delete: (friendId, dmId) =>
+    request(`/dms/${friendId}/messages/${dmId}`, {
+      method: "DELETE",
+    }),
+  markRead: (friendId) =>
+    request(`/dms/${friendId}/messages/read`, { method: "POST" }),
+  eventsUrl: (friendId) => sseUrl(`/dms/${friendId}/messages/events`),
+};

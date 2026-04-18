@@ -95,12 +95,16 @@ def create_app(config_name: str | None = None) -> Flask:
             from app.models.channel import ensure_indexes as channel_indexes
             from app.models.invite import ensure_indexes as invite_indexes
             from app.models.message import ensure_indexes as message_indexes
+            from app.models.friend_request import ensure_indexes as friend_request_indexes
+            from app.models.direct_message import ensure_indexes as dm_indexes
             user_indexes()
             role_indexes()
             server_indexes()
             channel_indexes()
             invite_indexes()
             message_indexes()
+            friend_request_indexes()
+            dm_indexes()
 
             # Only seed defaults when the DB is empty (first boot)
             if mongo.db.roles.count_documents({}, limit=1) == 0:

@@ -7,9 +7,12 @@ import ChannelList from "../components/ChannelList";
 import VoicePanel from "../components/VoicePanel";
 import TextPanel from "../components/TextPanel";
 import MembersPanel from "../components/MembersPanel";
+import FriendsPanel from "../components/FriendsPanel";
+import DMPanel from "../components/DMPanel";
 import { ServerPresenceProvider } from "../context/ServerPresenceContext";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
+import { dms as dmsApi } from "../api/client";
 
 const DESKTOP_PROMPT_DISMISSED_KEY = "synthDesktopPromptDismissed";
 
@@ -17,6 +20,8 @@ export default function HomePage() {
   const { user } = useAuth();
   const [activeServer, setActiveServer] = useState(null);
   const [activeChannel, setActiveChannel] = useState(null);
+  const [activeFriend, setActiveFriend] = useState(null);
+  const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [showDesktopPrompt, setShowDesktopPrompt] = useState(() => {
     if (!isBrowserRuntime() || typeof window === "undefined") {
       return false;
@@ -30,7 +35,23 @@ export default function HomePage() {
   const handleServerSelect = (server) => {
     setActiveServer(server);
     setActiveChannel(null);
+    // Clear friend selection when entering a server
+    if (server) {
+      setActiveFriend(null);
+    }
   };
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchUnread = () => {
+      dmsApi.unreadCount()
+        .then((res) => setGlobalUnreadCount(res.unread_count || 0))
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     if (!showDesktopPrompt) {
@@ -63,6 +84,15 @@ export default function HomePage() {
     });
   };
 
+  const handleFriendRemoved = (friendId) => {
+    if (activeFriend?.id === friendId) {
+      setActiveFriend(null);
+    }
+  };
+
+  // Home mode: no server selected — show friends & DMs
+  const isHomeMode = activeServer === null;
+
   return (
     <div className="relative h-screen flex overflow-hidden noise-texture">
       {showDesktopPrompt && (
@@ -93,25 +123,42 @@ export default function HomePage() {
           </div>
         </div>
       )}
-      <ServerSidebar activeServer={activeServer} onSelect={handleServerSelect} />
-      <ServerPresenceProvider server={activeServer}>
-        <ChannelList
-          server={activeServer}
-          activeChannel={activeChannel}
-          onSelect={setActiveChannel}
-        />
-        <div className="flex-1 overflow-hidden relative flex">
-          {activeChannel?.type === "text" && (
-            <TextPanel channel={activeChannel} />
-          )}
-          <VoicePanel 
-            activeChannel={activeChannel} 
-            onNavigate={(channel) => setActiveChannel(channel)} 
+      <ServerSidebar activeServer={activeServer} onSelect={handleServerSelect} globalUnreadCount={globalUnreadCount} />
+
+      {isHomeMode ? (
+        /* ── Home / Friends & DMs mode ── */
+        <>
+          <FriendsPanel
+            onSelectFriend={setActiveFriend}
+            activeFriend={activeFriend}
           />
-        </div>
-        <MembersPanel server={activeServer} />
-      </ServerPresenceProvider>
+          <div className="flex-1 overflow-hidden relative flex">
+            <DMPanel
+              friend={activeFriend}
+              onFriendRemoved={handleFriendRemoved}
+            />
+          </div>
+        </>
+      ) : (
+        /* ── Server mode (existing layout) ── */
+        <ServerPresenceProvider server={activeServer}>
+          <ChannelList
+            server={activeServer}
+            activeChannel={activeChannel}
+            onSelect={setActiveChannel}
+          />
+          <div className="flex-1 overflow-hidden relative flex">
+            {activeChannel?.type === "text" && (
+              <TextPanel channel={activeChannel} />
+            )}
+            <VoicePanel
+              activeChannel={activeChannel}
+              onNavigate={(channel) => setActiveChannel(channel)}
+            />
+          </div>
+          <MembersPanel server={activeServer} />
+        </ServerPresenceProvider>
+      )}
     </div>
   );
 }
-

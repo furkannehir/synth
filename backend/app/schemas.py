@@ -41,6 +41,7 @@ class UserSchema(Schema):
     last_seen = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
     created_at = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
     roles = fields.List(fields.Nested(RoleNestedSchema), metadata={"description": "Assigned roles"})
+    friends = fields.List(fields.String(), load_default=[], metadata={"description": "Friend user IDs"})
 
 
 class AuthResponseSchema(Schema):
@@ -286,3 +287,81 @@ class MessageResponseSchema(Schema):
 class MessageListSchema(Schema):
     messages = fields.List(fields.Nested(ChatMessageSchema))
 
+
+# ── Friends ──────────────────────────────────────────────────
+
+class SendFriendRequestSchema(Schema):
+    username = fields.String(required=True, metadata={"description": "Username to send request to"})
+
+
+class FriendUserSchema(Schema):
+    id = fields.String(metadata={"description": "User ID"})
+    username = fields.String(metadata={"description": "Username"})
+    avatar = fields.String(allow_none=True, metadata={"description": "Avatar URL"})
+    is_online = fields.Boolean(metadata={"description": "Currently online"})
+    last_seen = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
+
+
+class FriendListSchema(Schema):
+    friends = fields.List(fields.Nested(FriendUserSchema))
+
+
+class PendingRequestSchema(Schema):
+    id = fields.String(metadata={"description": "Request ID"})
+    requester_id = fields.String(metadata={"description": "Requester user ID"})
+    addressee_id = fields.String(metadata={"description": "Addressee user ID"})
+    status = fields.String(metadata={"description": "Request status"})
+    created_at = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
+    user = fields.Nested(FriendUserSchema, metadata={"description": "The other user's info"})
+
+
+class PendingListSchema(Schema):
+    incoming = fields.List(fields.Nested(PendingRequestSchema))
+    outgoing = fields.List(fields.Nested(PendingRequestSchema))
+
+
+class FriendRequestResponseSchema(Schema):
+    auto_accepted = fields.Boolean(metadata={"description": "True if request was auto-accepted"})
+    request = fields.Nested(PendingRequestSchema, allow_none=True)
+    friend = fields.Nested(FriendUserSchema, allow_none=True)
+
+
+# ── Direct Messages ─────────────────────────────────────────
+
+class SendDMSchema(Schema):
+    content = fields.String(required=True, metadata={"description": "Message content (max 2000 chars)"})
+
+
+class EditDMSchema(Schema):
+    content = fields.String(required=True, metadata={"description": "New message content"})
+
+
+class DMSchema(Schema):
+    id = fields.String(metadata={"description": "Message ID"})
+    sender_id = fields.String(metadata={"description": "Sender user ID"})
+    recipient_id = fields.String(metadata={"description": "Recipient user ID"})
+    conversation_key = fields.String(metadata={"description": "Conversation key"})
+    content = fields.String(metadata={"description": "Message content"})
+    created_at = fields.String(metadata={"description": "ISO timestamp"})
+    edited_at = fields.String(allow_none=True, metadata={"description": "ISO timestamp of last edit"})
+    is_read = fields.Boolean(metadata={"description": "Has the recipient read it?"})
+    sender_username = fields.String(allow_none=True, metadata={"description": "Sender username"})
+    sender_avatar = fields.String(allow_none=True, metadata={"description": "Sender avatar URL"})
+
+
+class DMResponseSchema(Schema):
+    message = fields.Nested(DMSchema)
+
+
+class DMListSchema(Schema):
+    messages = fields.List(fields.Nested(DMSchema))
+
+
+class ConversationSchema(Schema):
+    friend = fields.Nested(FriendUserSchema, metadata={"description": "The friend in this conversation"})
+    last_message = fields.Nested(DMSchema, metadata={"description": "The latest DM"})
+    unread_count = fields.Integer(metadata={"description": "Number of unread messages"})
+
+
+class ConversationListSchema(Schema):
+    conversations = fields.List(fields.Nested(ConversationSchema))
