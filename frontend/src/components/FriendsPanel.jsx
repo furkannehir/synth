@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { friends as friendsApi, dms as dmsApi } from "../api/client";
+import { MessageCircle } from "lucide-react";
+import Avatar from "./Avatar";
 
 const TABS = ["messages", "all", "pending", "add"];
 
@@ -31,36 +33,16 @@ function TabBar({ active, onChange, pendingCount }) {
   );
 }
 
-function FriendRow({ friend, onClick }) {
+function FriendRow({ friend, onClick, active }) {
   return (
     <button
       onClick={() => onClick(friend)}
-      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-cyber-hover/40
-                 transition-all duration-200 group cursor-pointer"
+      aria-pressed={active}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-cyber-hover/40
+                 transition-all duration-200 group cursor-pointer ${active ? "bg-cyber-hover" : ""}`}
     >
       {/* Avatar */}
-      <div className="relative flex-shrink-0">
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center
-                      bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20
-                      border border-neon-cyan/20 text-neon-cyan font-display font-bold text-xs"
-        >
-          {friend.avatar ? (
-            <img
-              src={friend.avatar}
-              alt={friend.username}
-              className="w-9 h-9 rounded-full object-cover"
-            />
-          ) : (
-            (friend.username || "?").slice(0, 2).toUpperCase()
-          )}
-        </div>
-        {/* Online indicator */}
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-cyber-surface
-                      ${friend.is_online ? "bg-neon-green online-pulse" : "bg-cyber-muted/40"}`}
-        />
-      </div>
+      <Avatar username={friend.username} avatar={friend.avatar} online={friend.is_online} />
 
       {/* Info */}
       <div className="flex-1 min-w-0 text-left">
@@ -77,42 +59,23 @@ function FriendRow({ friend, onClick }) {
         className="text-cyber-muted/30 group-hover:text-neon-cyan/60 transition-colors text-sm"
         title="Open DM"
       >
-        💬
+        <MessageCircle size={18} />
       </span>
     </button>
   );
 }
 
-function ConversationRow({ conversation, onClick }) {
+function ConversationRow({ conversation, onClick, active }) {
   const friend = conversation.friend;
   const msg = conversation.last_message;
   return (
     <button
       onClick={() => onClick(friend)}
-      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-cyber-hover/40
-                 transition-all duration-200 group cursor-pointer relative"
+      aria-pressed={active}
+      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-cyber-hover/40
+                 transition-all duration-200 group cursor-pointer relative ${active ? "bg-cyber-hover" : ""}`}
     >
-      <div className="relative flex-shrink-0">
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center
-                      bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20
-                      border border-neon-cyan/20 text-neon-cyan font-display font-bold text-sm"
-        >
-          {friend.avatar ? (
-            <img
-              src={friend.avatar}
-              alt={friend.username}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-          ) : (
-            (friend.username || "?").slice(0, 2).toUpperCase()
-          )}
-        </div>
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-cyber-surface
-                      ${friend.is_online ? "bg-neon-green online-pulse" : "bg-cyber-muted/40"}`}
-        />
-      </div>
+      <Avatar username={friend.username} avatar={friend.avatar} online={friend.is_online} />
 
       <div className="flex-1 min-w-0 text-left">
         <div className="flex justify-between items-baseline mb-0.5">
@@ -149,21 +112,7 @@ function PendingRequestRow({ req, type, onAccept, onReject, onCancel }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
       {/* Avatar */}
-      <div
-        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
-                    bg-gradient-to-br from-neon-pink/20 to-neon-purple/20
-                    border border-neon-pink/20 text-neon-pink font-display font-bold text-xs"
-      >
-        {req.user?.avatar ? (
-          <img
-            src={req.user.avatar}
-            alt={req.user?.username}
-            className="w-9 h-9 rounded-full object-cover"
-          />
-        ) : (
-          (req.user?.username || "?").slice(0, 2).toUpperCase()
-        )}
-      </div>
+      <Avatar username={req.user?.username} avatar={req.user?.avatar} />
 
       {/* Info */}
       <div className="flex-1 min-w-0">
@@ -375,11 +324,8 @@ export default function FriendsPanel({ onSelectFriend, activeFriend }) {
     fetchPending();
   };
 
-  const onlineFriends = friendList.filter((f) => f.is_online);
-  const displayFriends = activeTab === "online" ? onlineFriends : friendList;
-
   return (
-    <div className="w-60 bg-cyber-panel/80 border-r border-cyber-border/40 flex flex-col overflow-hidden">
+    <div className="friends-navigation flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-4 h-14 flex items-center border-b border-cyber-border/40 flex-shrink-0">
         <h2 className="font-display font-bold text-sm text-cyber-text uppercase tracking-wider">
@@ -465,6 +411,7 @@ export default function FriendsPanel({ onSelectFriend, activeFriend }) {
                   <FriendRow
                     key={friend.id}
                     friend={friend}
+                    active={activeFriend?.id === friend.id}
                     onClick={onSelectFriend}
                   />
                 ))}
@@ -498,6 +445,7 @@ export default function FriendsPanel({ onSelectFriend, activeFriend }) {
                   <ConversationRow
                     key={conv.friend.id}
                     conversation={conv}
+                    active={activeFriend?.id === conv.friend.id}
                     onClick={onSelectFriend}
                   />
                 ))}

@@ -3,194 +3,11 @@ import { createChannelState } from "../api/channelMessages";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { messages as messagesApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import MessageContent from "./MessageContent";
+import MessageBubble, { DateSeparator } from "./ChatMessage";
+import ConversationHeader from "./ConversationHeader";
+import { groupByDate } from "../utils/chatPresentation";
+import { Hash, Send, X } from "lucide-react";
 
-// ── Helpers ───────────────────────────────────────────────
-
-function formatTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-}
-
-function groupByDate(msgs) {
-  const groups = [];
-  let currentDate = null;
-  for (const msg of msgs) {
-    const date = msg.created_at ? new Date(msg.created_at).toDateString() : "Unknown";
-    if (date !== currentDate) {
-      currentDate = date;
-      groups.push({ type: "separator", label: formatDate(msg.created_at) });
-    }
-    groups.push({ type: "message", ...msg });
-  }
-  return groups;
-}
-
-function getInitials(name) {
-  return (name || "?").slice(0, 2).toUpperCase();
-}
-
-// ── Avatar component ──────────────────────────────────────
-
-function Avatar({ username, avatar, size = "w-8 h-8" }) {
-  return avatar ? (
-    <img
-      src={avatar}
-      alt={username}
-      className={`${size} rounded-full object-cover flex-shrink-0`}
-    />
-  ) : (
-    <div
-      className={`${size} rounded-full flex items-center justify-center flex-shrink-0
-                  bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20
-                  border border-neon-cyan/20 text-neon-cyan font-display font-bold text-xs`}
-    >
-      {getInitials(username)}
-    </div>
-  );
-}
-
-// ── Message bubble ─────────────────────────────────────────
-
-function MessageBubble({ msg, isOwn, onEdit, onDelete, editingId, onCancelEdit, onSubmitEdit }) {
-  const [hovered, setHovered] = useState(false);
-  const [editContent, setEditContent] = useState(msg.content);
-  const isEditing = editingId === msg.id;
-
-  const handleEditKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onSubmitEdit(msg.id, editContent);
-    }
-    if (e.key === "Escape") onCancelEdit();
-  };
-
-  return (
-    <div
-      className="flex gap-3 px-4 py-1 group relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Avatar */}
-      <div className="mt-0.5">
-        <Avatar username={msg.author_username} avatar={msg.author_avatar} />
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Header row */}
-        <div className="flex items-baseline gap-2 mb-0.5">
-          <span
-            className={`text-xs font-display font-bold tracking-wide
-                        ${isOwn ? "text-neon-cyan" : "text-neon-pink"}`}
-          >
-            {msg.author_username || "Unknown"}
-          </span>
-          <span className="text-[10px] text-cyber-muted/50 font-mono tabular-nums">
-            {formatTime(msg.created_at)}
-          </span>
-          {msg.edited_at && (
-            <span className="text-[9px] text-cyber-muted/35 font-mono italic">(edited)</span>
-          )}
-        </div>
-
-        {/* Body */}
-        {isEditing ? (
-          <div className="mt-1">
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              onKeyDown={handleEditKeyDown}
-              rows={2}
-              autoFocus
-              className="w-full bg-cyber-surface border border-neon-cyan/40 rounded-lg
-                         px-3 py-2 text-sm text-cyber-text font-mono resize-none
-                         focus:outline-none focus:border-neon-cyan/70
-                         focus:shadow-[0_0_0_2px_rgba(0,240,255,0.08)]
-                         transition-all"
-            />
-            <div className="flex gap-2 mt-1.5">
-              <button
-                onClick={() => onSubmitEdit(msg.id, editContent)}
-                className="px-3 py-1 text-[11px] font-display font-bold uppercase tracking-wider
-                           bg-neon-cyan/10 border border-neon-cyan/40 text-neon-cyan
-                           rounded hover:bg-neon-cyan/20 hover:border-neon-cyan/70 transition cursor-pointer"
-              >
-                Save
-              </button>
-              <button
-                onClick={onCancelEdit}
-                className="px-3 py-1 text-[11px] font-display font-bold uppercase tracking-wider
-                           text-cyber-muted/60 hover:text-cyber-muted rounded transition cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-cyber-text/85 leading-relaxed whitespace-pre-wrap break-words font-mono">
-            <MessageContent content={msg.content} />
-          </p>
-        )}
-      </div>
-
-      {/* Action buttons — appear on hover */}
-      {hovered && !isEditing && (
-        <div className="absolute right-4 top-1 flex items-center gap-1
-                        bg-cyber-surface border border-cyber-border/60 rounded-lg shadow-xl
-                        px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {isOwn && (
-            <button
-              onClick={() => onEdit(msg)}
-              title="Edit"
-              className="w-6 h-6 flex items-center justify-center rounded text-cyber-muted
-                         hover:text-neon-cyan hover:bg-neon-cyan/10 transition text-xs cursor-pointer"
-            >
-              ✎
-            </button>
-          )}
-          {(isOwn) && (
-            <button
-              onClick={() => onDelete(msg.id)}
-              title="Delete"
-              className="w-6 h-6 flex items-center justify-center rounded text-cyber-muted
-                         hover:text-neon-red hover:bg-neon-red/10 transition text-xs cursor-pointer"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Date separator ─────────────────────────────────────────
-
-function DateSeparator({ label }) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <div className="flex-1 h-px bg-cyber-border/30" />
-      <span className="text-[10px] text-cyber-muted/50 font-display uppercase tracking-[0.2em] px-2">
-        {label}
-      </span>
-      <div className="flex-1 h-px bg-cyber-border/30" />
-    </div>
-  );
-}
 
 // ── Empty state ────────────────────────────────────────────
 
@@ -199,7 +16,7 @@ function EmptyState({ channelName }) {
     <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8">
       <div className="w-16 h-16 rounded-2xl bg-cyber-surface border border-cyber-border/40
                       flex items-center justify-center text-neon-cyan/30 text-3xl font-display">
-        #
+        <Hash size={36} />
       </div>
       <div className="text-center">
         <p className="text-neon-cyan font-display font-bold text-lg uppercase tracking-wider">
@@ -215,18 +32,19 @@ function EmptyState({ channelName }) {
 
 // ── Main TextPanel component ───────────────────────────────
 
-export default function TextPanel({ channel }) {
+export default function TextPanel({ channel, onToggleMembers, membersOpen, children }) {
   const { user } = useAuth();
-  return <TextChannelPanel key={`${user?.id || user?._id}:${channel?.id || "none"}`} channel={channel} user={user} />;
+  return <TextChannelPanel key={`${user?.id || user?._id}:${channel?.id || "none"}`} channel={channel} user={user} onToggleMembers={onToggleMembers} membersOpen={membersOpen}>{children}</TextChannelPanel>;
 }
 
-function TextChannelPanel({ channel, user }) {
+function TextChannelPanel({ channel, user, onToggleMembers, membersOpen, children }) {
   const channelId = channel?.id;
   const [msgList, setMsgList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
@@ -418,30 +236,19 @@ function TextChannelPanel({ channel, user }) {
     );
   }
 
-  const items = groupByDate(msgList);
+  const items = groupByDate(msgList.filter((message) => !query || message.content.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
 
   return (
-    <div className="flex-1 flex flex-col bg-cyber-bg noise-texture overflow-hidden">
+    <div className="conversation-panel">
       {/* ── Header ── */}
-      <div className="px-5 h-14 flex items-center border-b border-cyber-border/40
-                      bg-cyber-surface/40 gap-3 flex-shrink-0">
-        <span className="text-neon-cyan/60 font-display font-bold text-lg">#</span>
-        <h3 className="font-display font-bold text-sm text-cyber-text uppercase tracking-wider">
-          {channel.name}
-        </h3>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse" />
-          <span className="text-[10px] text-neon-green/70 font-display uppercase tracking-widest">
-            Live
-          </span>
-        </div>
-      </div>
+      <ConversationHeader title={channel.name} query={query} onQueryChange={setQuery} onToggleMembers={onToggleMembers} membersOpen={membersOpen} />
+      {children}
 
       {/* ── Message list ── */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto py-2 flex flex-col"
+        className="message-scroll"
       >
         {/* Load more indicator */}
         {loadingMore && (
@@ -452,12 +259,8 @@ function TextChannelPanel({ channel, user }) {
           </div>
         )}
 
-        {/* Top reached */}
-        {!hasMore && msgList.length > 0 && (
-          <p className="text-center text-[10px] text-cyber-muted/30 font-mono py-4">
-            — Beginning of #{channel.name} —
-          </p>
-        )}
+        {query && hasMore && <button className="search-load-more" disabled={loadingMore} onClick={() => { scrollRef.current.scrollTop = 0; handleScroll(); }}>Search earlier messages</button>}
+        {query && !loading && items.length === 0 && <p className="search-empty">No matching messages.</p>}
 
         {/* Loading skeleton */}
         {loading && (
@@ -506,18 +309,14 @@ function TextChannelPanel({ channel, user }) {
             onClick={() => setError("")}
             className="text-neon-red/60 hover:text-neon-red text-sm ml-3 cursor-pointer"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
       )}
 
       {/* ── Composer ── */}
-      <div className="px-4 pb-4 flex-shrink-0">
-        <div className="flex items-end gap-3 bg-cyber-surface border border-cyber-border/60
-                        rounded-xl px-3 py-2.5
-                        focus-within:border-neon-cyan/40
-                        focus-within:shadow-[0_0_0_2px_rgba(0,240,255,0.06)]
-                        transition-all duration-200">
+      <div className="conversation-composer">
+        <div className="composer-field">
           <textarea
             ref={textareaRef}
             value={input}
@@ -531,25 +330,19 @@ function TextChannelPanel({ channel, user }) {
             placeholder={`Message #${channel.name}`}
             rows={1}
             disabled={sending}
-            className="flex-1 bg-transparent text-sm text-cyber-text font-mono
-                       resize-none outline-none leading-relaxed
-                       placeholder:text-cyber-muted/35
-                       disabled:opacity-50 max-h-[120px] overflow-y-auto"
+            aria-label={`Message #${channel.name}`}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || sending}
             title="Send (Enter)"
-            className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0
-                       bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan
-                       hover:bg-neon-cyan/20 hover:border-neon-cyan/60 hover:glow-cyan
-                       disabled:opacity-30 disabled:cursor-not-allowed
-                       transition-all duration-200 cursor-pointer text-base"
+            className="send-button"
+            aria-label="Send message"
           >
-            ➤
+            <Send size={23} />
           </button>
         </div>
-        <p className="text-[10px] text-cyber-muted/30 font-mono mt-1.5 px-1">
+        <p className="composer-hint">
           Enter to send · Shift+Enter for new line
         </p>
       </div>

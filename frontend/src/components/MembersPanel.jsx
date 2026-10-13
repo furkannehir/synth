@@ -1,7 +1,9 @@
 import { useAuth } from "../context/AuthContext";
 import { useServerPresence } from "../context/ServerPresenceContext";
+import { X } from "lucide-react";
+import Avatar from "./Avatar";
 
-export default function MembersPanel({ server }) {
+export default function MembersPanel({ server, onClose }) {
   const { user: currentUser } = useAuth();
   const { members, connected } = useServerPresence();
 
@@ -24,7 +26,7 @@ export default function MembersPanel({ server }) {
   }
 
   return (
-    <div className="w-56 bg-cyber-panel/40 border-l border-cyber-border/40 flex flex-col">
+    <aside className="members-panel" aria-label="Server members">
       {/* Header */}
       <div className="px-4 h-12 flex items-center border-b border-cyber-border/40 bg-cyber-surface/30 gap-2">
         <span
@@ -37,6 +39,7 @@ export default function MembersPanel({ server }) {
         <span className="ml-auto text-[10px] text-cyber-muted bg-cyber-bg/40 px-2 py-0.5 rounded-full tabular-nums">
           {members.length}
         </span>
+        {onClose && <button className="icon-button" aria-label="Close members" onClick={onClose}><X size={20} /></button>}
       </div>
 
       {/* Reconnecting banner */}
@@ -91,13 +94,11 @@ export default function MembersPanel({ server }) {
           </p>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 
 function MemberRow({ member, isOnline, isYou }) {
-  const initials = (member.username || "?").slice(0, 2).toUpperCase();
-
   return (
     <div
       className={`flex items-center gap-2.5 px-3 py-1.5 mx-1 rounded-lg
@@ -105,23 +106,7 @@ function MemberRow({ member, isOnline, isYou }) {
                   ${isOnline ? "hover:bg-cyber-hover/40" : "hover:bg-cyber-hover/20 opacity-60"}`}
     >
       {/* Avatar */}
-      <div className="relative flex-shrink-0">
-        <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px]
-                      font-display font-bold transition-all duration-300
-                      ${isOnline
-                        ? "bg-gradient-to-br from-neon-cyan/25 to-neon-cyan/10 text-neon-cyan border border-neon-cyan/20"
-                        : "bg-gradient-to-br from-cyber-muted/15 to-cyber-muted/5 text-cyber-muted/60 border border-cyber-border/20"
-                      }`}
-        >
-          {initials}
-        </div>
-        {/* Status dot */}
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-cyber-panel
-                      ${isOnline ? "bg-neon-green" : "bg-cyber-muted/40"}`}
-        />
-      </div>
+      <Avatar username={member.username} avatar={member.avatar} online={isOnline} />
 
       {/* Name */}
       <div className="flex-1 min-w-0">

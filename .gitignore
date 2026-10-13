@@ -20,5 +20,6 @@ frontend/dist/
 .idea/
 
 # OS
+.tmp/
 .DS_Store
 Thumbs.db

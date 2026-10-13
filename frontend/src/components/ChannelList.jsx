@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Video, Monitor } from "lucide-react";
+import { Video, Monitor, Hash, Volume2, Plus, Copy, RefreshCw, X, Play, UserPlus } from "lucide-react";
+import Avatar from "./Avatar";
 import { channels as channelsApi, invites as invitesApi } from "../api/client";
 import { useServerPresence } from "../context/ServerPresenceContext";
 import { getInviteCacheTtlHours, getInviteCacheTtlMs } from "../utils/runtime";
@@ -89,7 +90,7 @@ const isCachedInviteExpired = (cachedInvite) => {
   return false;
 };
 
-export default function ChannelList({ server, activeChannel, onSelect }) {
+export default function ChannelList({ server, activeChannel, onSelect, onChannelsLoaded }) {
   const { voiceChannels } = useServerPresence();
 
   const [channelList, setChannelList] = useState([]);
@@ -103,6 +104,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
   const [createChannelError, setCreateChannelError] = useState("");
 
   useEffect(() => {
+    let active = true;
     setInviteLink(null);
     setInviteError("");
     setShowCreateChannel(false);
@@ -116,15 +118,20 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
     channelsApi
       .list(server.id)
-      .then((data) => setChannelList(data.channels || []))
+      .then((data) => {
+        if (!active) return;
+        setChannelList(data.channels || []);
+        onChannelsLoaded?.(data.channels || [], server.id);
+      })
       .catch(() => { });
-  }, [server]);
+    return () => { active = false; };
+  }, [server, onChannelsLoaded]);
 
   if (!server) {
     return (
       <div className="w-60 bg-cyber-panel/50 border-r border-cyber-border/40 flex flex-col items-center justify-center gap-3">
         <div className="w-12 h-12 rounded-xl bg-cyber-border/20 flex items-center justify-center text-cyber-muted/40 text-2xl">
-          ◇
+          <Hash size={26} aria-hidden="true" />
         </div>
         <p className="text-cyber-muted/60 text-xs font-display uppercase tracking-widest">Select a server</p>
       </div>
@@ -215,7 +222,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
   const handleCreateChannel = async (event) => {
     event.preventDefault();
     const name = newChannelName.trim();
-    if (!name) {
+    if (!name || createChannelLoading) {
       return;
     }
 
@@ -234,6 +241,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
       };
 
       setChannelList((prev) => [...prev, createdChannel]);
+      onChannelsLoaded?.([...channelList, createdChannel], server.id);
       onSelect(createdChannel);
       closeCreateChannel();
     } catch (error) {
@@ -248,97 +256,78 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
   return (
     <>
-      <div className="w-60 bg-cyber-panel/50 border-r border-cyber-border/40 flex flex-col">
-        {/* Server name header */}
-        <div className="px-4 h-12 flex items-center border-b border-cyber-border/40 bg-cyber-surface/30">
-          <h2 className="text-sm font-display font-bold text-cyber-text uppercase tracking-wider truncate">
-            {server.name}
-          </h2>
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="text-[10px] text-cyber-muted bg-cyber-bg/40 px-2 py-0.5 rounded-full">
-              {channelList.length}
-            </span>
-            <button
-              onClick={() => (showCreateChannel ? closeCreateChannel() : openCreateChannel("text"))}
-              className="rounded border border-neon-cyan/20 bg-neon-cyan/5 px-2 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-neon-cyan/75 transition hover:border-neon-cyan/40 hover:bg-neon-cyan/15 hover:text-neon-cyan"
-            >
-              {showCreateChannel ? "Close" : "+ Channel"}
-            </button>
-          </div>
+      <div className="channel-navigation">
+        <div className="channel-navigation-actions">
+          <button className="server-action" onClick={handleCreateInvite} disabled={inviteLoading}><UserPlus size={18} aria-hidden="true" />{inviteLoading ? "Creating…" : "Create invite"}</button>
+          <button className="server-action" aria-expanded={showCreateChannel} disabled={createChannelLoading} onClick={() => (showCreateChannel ? closeCreateChannel() : openCreateChannel("text"))}><Plus size={18} aria-hidden="true" />Create channel</button>
         </div>
 
         {showCreateChannel && (
-          <div className="border-b border-cyber-border/20 bg-cyber-surface/10 px-3 py-2.5">
-            <form className="space-y-2.5" onSubmit={handleCreateChannel}>
-              <div className="flex items-center gap-1.5">
+          <section className="channel-create-panel" aria-label="Create a channel">
+            <form className="channel-create-form" onSubmit={handleCreateChannel}>
+              <fieldset className="channel-type-picker">
+                <legend className="sr-only">Channel type</legend>
                 <button
                   type="button"
                   onClick={() => setNewChannelType("text")}
-                  className={`flex-1 rounded border px-2 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] transition
-                              ${newChannelType === "text"
-                      ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
-                      : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
-                    }`}
+                  aria-pressed={newChannelType === "text"}
+                  disabled={createChannelLoading}
                 >
-                  # Text
+                  <Hash size={18} aria-hidden="true" />Text
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewChannelType("voice")}
-                  className={`flex-1 rounded border px-2 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] transition
-                              ${newChannelType === "voice"
-                      ? "border-neon-cyan/45 bg-neon-cyan/15 text-neon-cyan"
-                      : "border-cyber-border/50 bg-cyber-panel/50 text-cyber-muted hover:border-cyber-muted/60 hover:text-cyber-text"
-                    }`}
+                  aria-pressed={newChannelType === "voice"}
+                  disabled={createChannelLoading}
                 >
-                  O Voice
+                  <Volume2 size={18} aria-hidden="true" />Voice
                 </button>
-              </div>
+              </fieldset>
 
-              <div className="flex items-center rounded border border-cyber-border/50 bg-cyber-panel/60">
-                <span className="pl-2 text-[11px] text-neon-cyan/65">
-                  {newChannelType === "text" ? "#" : "O"}
-                </span>
+              <label className="channel-name-field">
+                {newChannelType === "text" ? <Hash size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
                 <input
                   autoFocus
+                  aria-label="Channel name"
+                  disabled={createChannelLoading}
                   value={newChannelName}
                   onChange={(event) => setNewChannelName(event.target.value)}
                   placeholder="Channel name"
                   maxLength={48}
-                  className="w-full bg-transparent px-2.5 py-2 text-sm text-cyber-text outline-none"
                 />
-              </div>
+              </label>
 
               {createChannelError && (
-                <p className="text-[11px] text-neon-red/80">{createChannelError}</p>
+                <p role="alert" className="form-error">{createChannelError}</p>
               )}
 
-              <div className="flex items-center justify-end gap-1.5">
+              <div className="channel-form-actions">
                 <button
                   type="button"
                   onClick={closeCreateChannel}
                   disabled={createChannelLoading}
-                  className="rounded border border-cyber-border px-2.5 py-1 text-[10px] font-display uppercase tracking-[0.16em] text-cyber-muted transition hover:border-cyber-muted/70 hover:text-cyber-text disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createChannelLoading || !newChannelName.trim()}
-                  className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-2.5 py-1 text-[10px] font-display uppercase tracking-[0.16em] text-neon-cyan transition hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {createChannelLoading ? "Creating..." : "Create"}
                 </button>
               </div>
             </form>
-          </div>
+          </section>
         )}
 
         {/* Invite section */}
-        <div className="px-3 py-2 border-b border-cyber-border/20">
-          {inviteLink ? (
-            <div className="flex items-center gap-1.5">
+        {(inviteLink || inviteError) && <section className="invite-tools" aria-label="Server invite">
+          {inviteLink && <>
+            <label htmlFor="server-invite-link" className="invite-link-label">Invite link</label>
+            <div className="invite-link-row">
               <input
+                id="server-invite-link"
                 readOnly
                 value={inviteLink}
                 className="flex-1 text-[10px] bg-cyber-bg/60 text-neon-cyan border border-cyber-border/30
@@ -352,7 +341,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                 className="inline-flex h-7 w-7 items-center justify-center rounded bg-neon-cyan/10 text-[12px]
                          leading-none text-neon-cyan transition hover:bg-neon-cyan/20"
               >
-                ⧉
+                <Copy size={16} />
               </button>
               <button
                 type="button"
@@ -364,7 +353,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                          leading-none text-neon-cyan/80 transition hover:bg-neon-cyan/15 hover:text-neon-cyan
                          disabled:cursor-not-allowed disabled:opacity-40"
               >
-                ↻
+                <RefreshCw size={16} />
               </button>
               <button
                 type="button"
@@ -374,125 +363,71 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
                 className="inline-flex h-7 w-7 items-center justify-center rounded bg-cyber-border/20 text-[11px]
                          leading-none text-cyber-muted transition hover:bg-cyber-border/35 hover:text-cyber-text"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
-          ) : (
-            <button
-              onClick={handleCreateInvite}
-              disabled={inviteLoading}
-              className="w-full py-1.5 text-[11px] font-display font-semibold uppercase tracking-wider
-                       text-neon-cyan/70 hover:text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10
-                       border border-neon-cyan/15 hover:border-neon-cyan/30
-                       rounded transition cursor-pointer disabled:opacity-40"
-            >
-              {inviteLoading ? "Creating..." : "+ Create Invite"}
-            </button>
-          )}
+          </>}
           {inviteError && <p role="alert" className="mt-2 text-xs text-neon-red">{inviteError}</p>}
-        </div>
+        </section>}
 
         <div className="flex-1 overflow-y-auto py-3">
-          {channelList.length === 0 && (
-            <div className="px-4 py-6 text-center">
-              <p className="text-[11px] font-display uppercase tracking-[0.2em] text-cyber-muted/60">
-                No channels yet
-              </p>
-              <button
-                type="button"
-                onClick={() => openCreateChannel("text")}
-                className="mt-3 rounded border border-neon-cyan/20 bg-neon-cyan/5 px-2.5 py-1 text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-neon-cyan/75 transition hover:border-neon-cyan/40 hover:bg-neon-cyan/15 hover:text-neon-cyan"
-              >
-                + Create First Channel
-              </button>
-            </div>
-          )}
-
           {/* Text channels */}
-          {textChannels.length > 0 && (
-            <div className="mb-4">
-              <div className="px-4 mb-2 flex items-center gap-2">
-                <span className="h-px flex-1 bg-cyber-border/30" />
+            <section className="mb-4">
+              <div className="sidebar-section-title">
                 <p className="text-[10px] text-cyber-muted/70 uppercase tracking-[0.2em] font-display font-semibold">
-                  Text
+                  Text channels
                 </p>
-                <button
-                  type="button"
-                  onClick={() => openCreateChannel("text")}
-                  className="rounded border border-cyber-border/40 px-1.5 py-0.5 text-[10px] text-cyber-muted transition hover:border-neon-cyan/40 hover:text-neon-cyan"
-                >
-                  +
-                </button>
-                <span className="h-px flex-1 bg-cyber-border/30" />
               </div>
+              {textChannels.length === 0 && <p className="channel-empty">No text channels yet.</p>}
               {textChannels.map((ch) => (
                 <ChannelItem
                   key={ch.id}
                   channel={ch}
                   active={activeChannel?.id === ch.id}
                   onSelect={onSelect}
-                  icon="#"
                 />
               ))}
-            </div>
-          )}
+            </section>
 
           {/* Voice channels */}
-          {voiceChannelsList.length > 0 && (
-            <div>
-              <div className="px-4 mb-2 flex items-center gap-2">
-                <span className="h-px flex-1 bg-cyber-border/30" />
+            <section>
+              <div className="sidebar-section-title">
                 <p className="text-[10px] text-cyber-muted/70 uppercase tracking-[0.2em] font-display font-semibold">
-                  Voice
+                  Voice channels
                 </p>
-                <button
-                  type="button"
-                  onClick={() => openCreateChannel("voice")}
-                  className="rounded border border-cyber-border/40 px-1.5 py-0.5 text-[10px] text-cyber-muted transition hover:border-neon-cyan/40 hover:text-neon-cyan"
-                >
-                  +
-                </button>
-                <span className="h-px flex-1 bg-cyber-border/30" />
               </div>
+              {voiceChannelsList.length === 0 && <p className="channel-empty">No voice channels yet.</p>}
               {voiceChannelsList.map((ch) => (
                 <ChannelItem
                   key={ch.id}
                   channel={ch}
                   active={activeChannel?.id === ch.id}
                   onSelect={onSelect}
-                  icon="◈"
                   participants={voiceChannels[ch.id] || []}
                 />
               ))}
-            </div>
-          )}
+            </section>
         </div>
       </div>
     </>
   );
 }
 
-function ChannelItem({ channel, active, onSelect, icon, participants = [] }) {
+function ChannelItem({ channel, active, onSelect, participants = [] }) {
+  const { members } = useServerPresence();
   const isVoice = channel.type === "voice";
 
   return (
     <div className="flex flex-col">
       <div
-        className={`w-full px-3 py-1.5 mx-0 flex items-center gap-2.5 text-sm transition-all duration-200
-                    group rounded-none
-                    ${active
-            ? "bg-neon-cyan/8 text-neon-cyan border-l-2 border-neon-cyan pl-[10px]"
-            : "text-cyber-muted hover:text-cyber-text hover:bg-cyber-hover/50 border-l-2 border-transparent pl-[10px]"
-          }`}
+        className={`channel-nav-row group ${active ? "is-active" : ""}`}
       >
         <button
           onClick={() => onSelect(channel)}
           className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
         >
-          <span className={`text-xs ${active ? "text-neon-cyan/80" : "text-cyber-muted/40 group-hover:text-cyber-muted/70"} transition-colors`}>
-            {icon}
-          </span>
-          <span className="truncate font-display font-medium text-[13px]">{channel.name}</span>
+          {isVoice ? <Volume2 size={23} /> : <Hash size={25} />}
+          <span className="truncate">{channel.name}</span>
         </button>
 
         <div className="flex items-center gap-1.5 ml-auto">
@@ -509,26 +444,21 @@ function ChannelItem({ channel, active, onSelect, icon, participants = [] }) {
                          hover:bg-neon-green/20 hover:text-neon-green hover:border-neon-green/40
                          transition-all cursor-pointer"
             >
-              ▶
+              <Play size={13} />
             </button>
           )}
         </div>
       </div>
 
       {participants.length > 0 && (
-        <div className="flex flex-col gap-1 px-4 pb-2 pt-1 pl-[28px]">
-          {participants.map((p) => {
+        <div className="channel-participants">
+          {participants.slice(0, 3).map((p) => {
             const isCamOn = p.tracks?.some(t => t.source === "camera" && !t.muted);
             const isScreenOn = p.tracks?.some(t => t.source === "screen_share" && !t.muted);
 
             return (
               <div key={p.identity} className="flex items-center gap-2 group cursor-default">
-                <div className="w-5 h-5 rounded-full bg-cyber-surface/50 border border-neon-cyan/20 flex items-center justify-center text-[8px] font-bold text-neon-cyan/80">
-                  {(p.name || "?").slice(0, 2).toUpperCase()}
-                </div>
-                <span className="text-[11px] text-cyber-muted group-hover:text-neon-cyan/80 truncate flex-1 font-medium transition-colors">
-                  {p.name}
-                </span>
+                <Avatar username={p.name} avatar={members.find(({ id }) => id === p.identity)?.avatar} />
                 <div className="flex items-center gap-1.5 text-[10px]">
                   {isCamOn && (
                     <Video size={10} className="text-neon-cyan/70 drop-shadow-[0_0_2px_rgba(0,255,255,0.4)]" />
@@ -540,6 +470,7 @@ function ChannelItem({ channel, active, onSelect, icon, participants = [] }) {
               </div>
             );
           })}
+          <span>{participants.length} in voice</span>
         </div>
       )}
     </div>

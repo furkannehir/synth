@@ -1,75 +1,54 @@
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { servers as serversApi } from "../api/client";
 import { useAuth } from "./AuthContext";
 
-const ServerPresenceContext = createContext({
-  members: [],
-  voiceChannels: {},
-  connected: false,
-});
+const ServerPresenceContext = createContext({ members: [], voiceChannels: {}, connected: false });
 
 export function ServerPresenceProvider({ server, children }) {
   const { accessToken } = useAuth();
-  const [members, setMembers] = useState([]);
-  const [voiceChannels, setVoiceChannels] = useState({});
-  const [connected, setConnected] = useState(false);
+  const serverId = server?.id || null;
+  const [snapshot, setSnapshot] = useState({ serverId: null, token: null, members: [], voiceChannels: {}, connected: false });
   const esRef = useRef(null);
+  const ownsSnapshot = snapshot.serverId === serverId && snapshot.token === accessToken;
 
   useEffect(() => {
-    // Avoid double events by closing preexisting ref
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-
-    if (!server) return;
-
-    const url = serversApi.membersStreamUrl(server.id);
-    const es = new EventSource(url);
+    if (!serverId) return;
+    let active = true;
+    const es = new EventSource(serversApi.membersStreamUrl(serverId));
     esRef.current = es;
-
-    es.onopen = () => setConnected(true);
-
-    es.onmessage = (e) => {
+    es.onopen = () => {
+      if (!active) return;
+      setSnapshot((previous) => ({
+        serverId, token: accessToken,
+        members: previous.serverId === serverId ? previous.members : [],
+        voiceChannels: previous.serverId === serverId ? previous.voiceChannels : {},
+        connected: true,
+      }));
+    };
+    es.onmessage = (event) => {
+      if (!active) return;
       try {
-        const data = JSON.parse(e.data);
-        if (Array.isArray(data.members)) {
-          setMembers(data.members);
-          // If the old payload format is sent, we just get members
-        } else if (data.members) {
-          setMembers(data.members);
-        }
-        
-        if (data.voice_channels) {
-          setVoiceChannels(data.voice_channels);
-        } else {
-          setVoiceChannels({});
-        }
-
-        setConnected(true);
-      } catch {
-        // ignore malformed
-      }
+        const data = JSON.parse(event.data);
+        setSnapshot((previous) => ({
+          serverId, token: accessToken,
+          members: Array.isArray(data.members) ? data.members : previous.serverId === serverId ? previous.members : [],
+          voiceChannels: data.voice_channels || {},
+          connected: true,
+        }));
+      } catch { /* Ignore malformed stream events. */ }
     };
-
     es.onerror = () => {
-      setConnected(false);
+      if (active) setSnapshot((previous) => ({ ...previous, connected: false }));
     };
+    return () => { active = false; es.close(); esRef.current = null; };
+  }, [serverId, accessToken]);
 
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-  }, [server, accessToken]);
-
-  return (
-    <ServerPresenceContext.Provider value={{ members, voiceChannels, connected }}>
-      {children}
-    </ServerPresenceContext.Provider>
-  );
+  return <ServerPresenceContext.Provider value={{
+    members: ownsSnapshot ? snapshot.members : [],
+    voiceChannels: ownsSnapshot ? snapshot.voiceChannels : {},
+    connected: ownsSnapshot && snapshot.connected,
+  }}>{children}</ServerPresenceContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useServerPresence() {
-  return useContext(ServerPresenceContext);
-}
+export function useServerPresence() { return useContext(ServerPresenceContext); }
