@@ -61,7 +61,8 @@ def _require_voice_channel(channel: dict):
 
 # ── Public API ─────────────────────────────────────────────
 
-def join_channel(server_id: str, channel_id: str, user_id: str, session_version: int | None = None) -> dict:
+def join_channel(server_id: str, channel_id: str, user_id: str, session_version: int | None = None,
+                 desktop_session=None) -> dict:
     """
     Join a voice channel.
 
@@ -104,7 +105,7 @@ def join_channel(server_id: str, channel_id: str, user_id: str, session_version:
     display_name = user["username"]
 
     version = session_version if session_version is not None else user.get("session_version", 0)
-    grant, previous = session_model.issue(server_id, channel_id, user_id, version, room)
+    grant, previous = session_model.issue(server_id, channel_id, user_id, version, room, desktop_session)
     if previous:
         session_model.queue_removal(previous)
         remove_now([previous])

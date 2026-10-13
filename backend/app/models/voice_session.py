@@ -16,12 +16,13 @@ def ensure_indexes():
     mongo.db.voice_sessions.create_index("server_id")
 
 
-def issue(server_id: str, channel_id: str, user_id: str, version: int, room: str):
+def issue(server_id: str, channel_id: str, user_id: str, version: int, room: str, desktop_session=None):
     grant = {
         "_id": f"{channel_id}:{user_id}", "server_id": ObjectId(server_id),
         "channel_id": ObjectId(channel_id), "user_id": ObjectId(user_id),
         "session_version": version, "identity": f"{user_id}.{secrets.token_hex(16)}",
         "room": room, "revoked": False, "created_at": datetime.now(timezone.utc),
+        "desktop_session": desktop_session,
     }
     fields = {key: value for key, value in grant.items() if key != "_id"}
     try:

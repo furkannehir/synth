@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { auth as authApi } from "../api/client";
+import { buildAuthLink, getAuthRedirect } from "../utils/authRedirect";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token") || "";
+  const returnTo = getAuthRedirect(searchParams);
+  const loginLink = buildAuthLink("/login", returnTo);
 
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -24,7 +27,7 @@ export default function ResetPasswordPage() {
     try {
       await authApi.resetPassword(token, newPassword);
       setDone(true);
-      setTimeout(() => navigate("/login"), 3000);
+      setTimeout(() => navigate(loginLink, { replace: true }), 3000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,7 +45,7 @@ export default function ResetPasswordPage() {
             This link is missing a token. Please request a new one.
           </p>
           <Link
-            to="/forgot-password"
+            to={buildAuthLink("/forgot-password", returnTo)}
             className="mt-6 inline-block text-neon-cyan text-sm hover:underline font-display font-semibold"
           >
             Request new link →
@@ -138,7 +141,7 @@ export default function ResetPasswordPage() {
         )}
 
         <p className="mt-6 text-center text-sm text-cyber-muted">
-          <Link to="/login" className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
+          <Link to={loginLink} className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
             ← Back to Login
           </Link>
         </p>

@@ -6,6 +6,7 @@ from bson import ObjectId
 
 from app.extensions import mongo
 from app.models import role as role_model
+from app.models import desktop_session
 from app.models.voice_session import queue_removal, revoke
 
 log = logging.getLogger(__name__)
@@ -17,6 +18,9 @@ def allowed(grant: dict, user: dict | None, server: dict | None, channel: dict |
             or server.get("deleting") or user.get("session_version", 0) != grant["session_version"]
             or grant["user_id"] not in server.get("members", [])
             or channel.get("type") != "voice" or channel["server_id"] != grant["server_id"]):
+        return False
+    if grant.get("desktop_session") and not desktop_session.is_active(
+            grant["desktop_session"], str(grant["user_id"]), grant["session_version"]):
         return False
     return (server.get("owner_id") == grant["user_id"] or "join_channel" in
             role_model.get_user_permissions(str(grant["user_id"]), str(grant["server_id"])))

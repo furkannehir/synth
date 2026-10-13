@@ -107,6 +107,8 @@ def create_app(config_name: str | None = None) -> Flask:
             dm_indexes()
             from app.models.voice_session import ensure_indexes as voice_session_indexes
             voice_session_indexes()
+            from app.models.desktop_session import ensure_indexes as desktop_session_indexes
+            desktop_session_indexes()
 
             if mongo.db.servers.count_documents({"is_default": True}, limit=1) == 0:
                 from app.models.server import seed_default as seed_server

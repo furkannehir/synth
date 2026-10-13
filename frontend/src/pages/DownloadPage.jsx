@@ -4,6 +4,7 @@ import { trackEvent } from "../utils/analytics";
 
 const REPO = "furkannehir/synth";
 const SOURCE_LABELS = {
+  invite: "from a server invite",
   login: "from the login screen",
   register: "after registration",
   "home-banner": "from the in-app web banner",

@@ -1,9 +1,12 @@
+import { TOKEN_CHANGED_EVENT } from "./tokenStore.js";
+
 /** Keep HTTP snapshots and streamed updates ordered, including reconnects. */
 export function connectChatStream({
   url, loadHistory, onHistory, onEvent, onError,
   EventSourceImpl = EventSource,
+  events = globalThis.window,
 }) {
-  const source = new EventSourceImpl(url);
+  let source;
   let disposed = false;
   let refreshing = false;
   let refreshAgain = false;
@@ -39,39 +42,49 @@ export function connectChatStream({
     refreshing = false;
   }
 
-  source.onopen = refreshHistory;
-  source.onmessage = (message) => {
+  function connect() {
     if (disposed) return;
-    let event;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    if (!event || typeof event.type !== "string") return;
-    const parsedRevision = message.lastEventId ? Number(message.lastEventId) : null;
-    const revision = Number.isSafeInteger(parsedRevision) ? parsedRevision : null;
-    if (event.type === "connected") {
-      if (Number.isSafeInteger(event.data?.revision)) {
-        replayThrough = event.data.revision;
+    source?.close();
+    const current = new EventSourceImpl(typeof url === "function" ? url() : url);
+    source = current;
+    replayThrough = -1;
+    source.onopen = () => { if (source === current && !disposed) refreshHistory(); };
+    source.onmessage = (message) => {
+      if (disposed || source !== current) return;
+      let event;
+      try {
+        event = JSON.parse(message.data);
+      } catch {
+        return;
       }
-      return;
-    }
-    if (event.type === "resync") {
-      if (revision !== null) replayThrough = revision;
-      refreshHistory();
-    } else if (refreshing) {
-      buffered.push({ event, revision });
-    } else {
-      applyUpdate({ event, revision });
-    }
-  };
-  source.onerror = () => {}; // EventSource reconnects; onopen reloads history.
+      if (!event || typeof event.type !== "string") return;
+      const parsedRevision = message.lastEventId ? Number(message.lastEventId) : null;
+      const revision = Number.isSafeInteger(parsedRevision) ? parsedRevision : null;
+      if (event.type === "connected") {
+        if (Number.isSafeInteger(event.data?.revision)) {
+          replayThrough = event.data.revision;
+        }
+        return;
+      }
+      if (event.type === "resync") {
+        if (revision !== null) replayThrough = revision;
+        refreshHistory();
+      } else if (refreshing) {
+        buffered.push({ event, revision });
+      } else {
+        applyUpdate({ event, revision });
+      }
+    };
+    source.onerror = () => {}; // EventSource reconnects; onopen reloads history.
+  }
+  connect();
+  events?.addEventListener(TOKEN_CHANGED_EVENT, connect);
   refreshHistory();
 
   return () => {
     disposed = true;
     buffered = [];
     source.close();
+    events?.removeEventListener(TOKEN_CHANGED_EVENT, connect);
   };
 }

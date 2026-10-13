@@ -361,6 +361,13 @@ set `VITE_WEB_URL` to the web frontend connected to the same API/database.
 Displayed and copied links use the same URL, including when reusing cached invite
 codes. Existing cached codes do not need to be regenerated for this fix.
 
+Desktop sessions use native credential storage and automatic renewal, so closing
+or updating the app preserves login while the session remains valid. Website
+invites can open the installed app through `synthapp://invite/<code>`, and channel
+messages and DMs render clickable web URLs. The app uses its own saved login for
+invite handoff. Automatic browser handoff stays disabled until the new desktop
+installer is released.
+
 ## Environment Variables
 
 | Variable | Description | Required |
@@ -378,6 +385,7 @@ codes. Existing cached codes do not need to be regenerated for this fix.
 | `VITE_INVITE_CACHE_TTL_HOURS` | Frontend invite cache lifetime in hours (defaults to `24`) | No |
 | `VITE_WEB_URL` | Public web frontend URL used for shared invite links; supplied in `.env.production`, required for desktop builds | Desktop |
 | `VITE_API_URL` | Frontend API/SSE base URL; production uses `https://synthapp.io/api`, development uses the local backend | No |
+| `VITE_DESKTOP_HANDOFF_ENABLED` | Build-time flag: `true` attempts opening Synth once on a valid browser invite preview; enable after releasing the protocol-capable desktop installer | No |
 
 ## License
 

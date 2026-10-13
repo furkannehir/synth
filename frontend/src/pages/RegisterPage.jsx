@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
+import { buildAuthLink, getAuthRedirect } from "../utils/authRedirect";
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = getAuthRedirect(location.search);
   const showDesktopDownload = isBrowserRuntime();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -20,7 +23,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(username, email, password);
-      navigate("/");
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -149,7 +152,7 @@ export default function RegisterPage() {
 
         <p className="mt-4 text-center text-sm text-cyber-muted">
           Already jacked in?{" "}
-          <Link to="/login" className="text-neon-cyan hover:text-glow-cyan transition-all duration-300 font-display font-semibold">
+          <Link to={buildAuthLink("/login", returnTo)} className="text-neon-cyan hover:text-glow-cyan transition-all duration-300 font-display font-semibold">
             Log in
           </Link>
         </p>

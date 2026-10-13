@@ -22,6 +22,7 @@ class RegisterSchema(Schema):
 class LoginSchema(Schema):
     email = fields.String(required=True, metadata={"description": "Email address"})
     password = fields.String(required=True, load_only=True, metadata={"description": "Password"})
+    persistent = fields.Boolean(load_default=False, metadata={"description": "Create a renewable desktop session"})
 
 
 class RoleNestedSchema(Schema):
@@ -49,6 +50,18 @@ class UserSchema(Schema):
 class AuthResponseSchema(Schema):
     user = fields.Nested(UserSchema)
     access_token = fields.String(metadata={"description": "JWT access token"})
+    refresh_token = fields.String()
+    revocation_token = fields.String()
+    expires_in = fields.Integer()
+
+
+class RefreshSessionSchema(Schema):
+    refresh_token = fields.String(required=True, validate=validate.Length(max=160), load_only=True)
+    next_refresh_token = fields.String(required=True, validate=validate.Length(max=160), load_only=True)
+
+
+class RevokeSessionSchema(Schema):
+    revocation_token = fields.String(required=True, validate=validate.Length(max=160), load_only=True)
 
 
 class UserResponseSchema(Schema):

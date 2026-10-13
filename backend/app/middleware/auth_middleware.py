@@ -8,6 +8,7 @@ from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
 from app.models import user as user_model
 from app.models import role as role_model
 from app.models import server as server_model
+from app.models import desktop_session
 
 
 class SessionError(Exception):
@@ -23,6 +24,8 @@ def ensure_session(user_id: str, claims: dict) -> dict:
         raise SessionError("Session expired. Please sign in again.")
     user = user_model.find_by_id(user_id)
     if user is None or user.get("session_version", 0) != version:
+        raise SessionError("Session expired. Please sign in again.")
+    if "desktop_session" in claims and not desktop_session.is_active(claims["desktop_session"], user_id, version):
         raise SessionError("Session expired. Please sign in again.")
     return user
 
@@ -51,7 +54,7 @@ def auth_required(fn):
         try:
             user = ensure_session(user_id, get_jwt())
         except SessionError as exc:
-            return jsonify({"error": str(exc)}), 401
+            return jsonify({"error": str(exc), "code": "session_revoked"}), 401
         # Validate resource IDs before any view or permission check converts
         # them, and use one spelling for comparisons and realtime topics.
         # DMs retain their conversation-specific validation/error contract.

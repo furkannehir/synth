@@ -3,6 +3,7 @@ import { createChannelState } from "../api/channelMessages";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { messages as messagesApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import MessageContent from "./MessageContent";
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ function MessageBubble({ msg, isOwn, onEdit, onDelete, editingId, onCancelEdit, 
           </div>
         ) : (
           <p className="text-sm text-cyber-text/85 leading-relaxed whitespace-pre-wrap break-words font-mono">
-            {msg.content}
+            <MessageContent content={msg.content} />
           </p>
         )}
       </div>
@@ -257,7 +258,7 @@ function TextChannelPanel({ channel, user }) {
     scopeRef.current = scope;
 
     const disconnect = connectChatStream({
-      url: messagesApi.eventsUrl(channelId),
+      url: () => messagesApi.eventsUrl(channelId),
       loadHistory: async () => {
         const localVersion = scope.mutationVersion;
         const data = await messagesApi.list(channelId);

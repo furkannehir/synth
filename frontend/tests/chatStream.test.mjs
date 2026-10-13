@@ -1,8 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { connectChatStream } from "../src/api/chatStream.js";
+import { TOKEN_CHANGED_EVENT } from "../src/api/tokenStore.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("renewed credentials reopen the stream and ignore frames from the old connection", async () => {
+  const sources = [], received = [], events = new EventTarget();
+  let token = "old-token";
+  class Source {
+    constructor(url) { this.url = url; sources.push(this); }
+    close() { this.closed = true; }
+  }
+  const disconnect = connectChatStream({
+    url: () => `/events?token=${token}`, EventSourceImpl: Source, events,
+    loadHistory: async () => [], onHistory() {}, onError() {}, onEvent: (event) => received.push(event),
+  });
+  await flush();
+  token = "new-token";
+  events.dispatchEvent(new Event(TOKEN_CHANGED_EVENT));
+  assert.equal(sources[0].closed, true);
+  assert.equal(sources[1].url, "/events?token=new-token");
+  sources[0].onmessage({ data: JSON.stringify({ type: "message", data: "stale" }) });
+  sources[1].onmessage({ data: JSON.stringify({ type: "message", data: "fresh" }) });
+  assert.deepEqual(received, [{ type: "message", data: "fresh" }]);
+  disconnect();
+  events.dispatchEvent(new Event(TOKEN_CHANGED_EVENT));
+  assert.equal(sources.length, 2);
+});
 
 function setup() {
   const requests = [], histories = [], events = [], errors = [];

@@ -8,6 +8,12 @@ mongo = PyMongo()
 # JWT manager — initialised in create_app()
 jwt = JWTManager()
 
+
+@jwt.expired_token_loader
+def expired_access_token(_header, _payload):
+    from flask import jsonify
+    return jsonify({"error": "Access token expired.", "code": "token_expired"}), 401
+
 # Media-server port — assigned during create_app()
 # Will hold a concrete MediaServerPort implementation (e.g. LiveKitAdapter).
 media_server = None

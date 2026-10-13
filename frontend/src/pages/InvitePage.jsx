@@ -1,28 +1,49 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { invites as invitesApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { buildAuthLink, getLocationPath } from "../utils/authRedirect";
+import { attemptDesktopInvite, browserInviteChoice, buildDesktopInviteLink } from "../utils/appLinks";
+import { isBrowserRuntime } from "../utils/runtime";
 
 export default function InvitePage() {
   const { code } = useParams();
+  return <InvitePreview key={code} code={code} />;
+}
+
+function InvitePreview({ code }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading: authLoading } = useAuth();
   const [invite, setInvite] = useState(null);
   const [error, setError] = useState(null);
   const [joining, setJoining] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [browserChosen, setBrowserChosen] = useState(false);
+  const desktopLink = buildDesktopInviteLink(code);
 
   useEffect(() => {
+    let disposed = false;
     invitesApi
       .preview(code)
-      .then((data) => setInvite(data.invite))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((data) => { if (!disposed) setInvite(data.invite); })
+      .catch((e) => { if (!disposed) setError(e.message); })
+      .finally(() => { if (!disposed) setLoading(false); });
+    return () => { disposed = true; };
   }, [code]);
 
+  useEffect(() => {
+    if (invite && !loading && !authLoading && isBrowserRuntime() && import.meta.env.VITE_DESKTOP_HANDOFF_ENABLED === "true") {
+      attemptDesktopInvite(code);
+    }
+  }, [invite, loading, authLoading, code]);
+
+  const chooseBrowser = () => { browserInviteChoice(code); setBrowserChosen(true); };
+
   const handleAccept = async () => {
+    if (isBrowserRuntime()) chooseBrowser();
     if (!user) {
-      navigate(`/login?redirect=/invite/${code}`);
+      navigate(buildAuthLink("/login", getLocationPath(location)));
       return;
     }
     setJoining(true);
@@ -106,6 +127,18 @@ export default function InvitePage() {
             </div>
 
             {error && <p className="text-neon-red text-xs">{error}</p>}
+
+            {isBrowserRuntime() && desktopLink && (
+              <div className="space-y-2 border border-neon-cyan/30 bg-neon-cyan/5 rounded-lg p-3">
+                <a href={desktopLink} className="block text-neon-cyan font-display text-sm font-semibold hover:underline">
+                  Open in Synth
+                </a>
+                <button onClick={chooseBrowser} className="text-xs text-cyber-muted hover:text-cyber-text cursor-pointer">
+                  {browserChosen ? "Continue with the invite below" : "Continue in browser"}
+                </button>
+                <Link to="/download?src=invite" className="block text-xs text-neon-cyan/80 hover:underline">Download Synth</Link>
+              </div>
+            )}
 
             <button
               onClick={handleAccept}

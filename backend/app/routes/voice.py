@@ -6,6 +6,7 @@ All endpoints live under:
 """
 
 from flask import jsonify
+from flask_jwt_extended import get_jwt
 from flask_smorest import Blueprint
 
 from app.middleware.auth_middleware import auth_required, permission_required
@@ -50,7 +51,8 @@ def join_voice(server_id, channel_id, current_user=None):
     """Join a voice channel and receive a media-server token."""
     try:
         result = voice_service.join_channel(
-            server_id, channel_id, str(current_user["_id"]), current_user.get("session_version", 0)
+            server_id, channel_id, str(current_user["_id"]), current_user.get("session_version", 0),
+            desktop_session=get_jwt().get("desktop_session"),
         )
     except VoiceError as exc:
         return jsonify({"error": exc.message}), exc.status_code

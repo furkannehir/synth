@@ -1,20 +1,18 @@
 import { rejectSession } from "./session";
+import { getToken, setToken, clearToken } from "./tokenStore";
+import { createDesktopSession } from "./desktopSession";
+import { nativeSessionStorage } from "./nativeSessionStorage";
+import { isTauriRuntime } from "../utils/runtime";
+export { getToken, setToken, clearToken } from "./tokenStore";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
-export function getToken() {
-  const t = localStorage.getItem("synth_token");
-  if (!t || t === "undefined") return null;
-  return t;
-}
-
-export function setToken(token) {
-  localStorage.setItem("synth_token", token);
-}
-
-export function clearToken() {
-  localStorage.removeItem("synth_token");
-}
+export const desktopSession = createDesktopSession({
+  storage: nativeSessionStorage,
+  request: (path, body) => rawRequest(path, { method: "POST", token: null, body: JSON.stringify(body) }),
+  tokens: { get: getToken, set: setToken, clear: clearToken },
+  expired: () => window.dispatchEvent(new Event("synth-session-expired")),
+});
 
 function withAuthQuery(url) {
   const token = getToken();
@@ -28,23 +26,43 @@ function sseUrl(path) {
   return withAuthQuery(`${API_BASE}${normalizedPath}`);
 }
 
-async function request(path, options = {}) {
+async function rawRequest(path, options = {}) {
   const { token = getToken(), ...fetchOptions } = options;
   const headers = { "Content-Type": "application/json", ...fetchOptions.headers };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+  const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(15000), ...fetchOptions, headers });
 
   const data = await res.json();
   if (!res.ok) {
-    if (res.status === 401 && (!path.startsWith("/auth/") || path === "/auth/me")) {
-      rejectSession(token);
-    }
-    throw new Error(data.message || data.error || "Request failed");
+    const error = new Error(data.message || data.error || data.msg || "Request failed");
+    error.status = res.status;
+    error.code = data.code;
+    throw error;
   }
   return data;
+}
+
+async function request(path, options = {}) {
+  let token = options.token === undefined ? getToken() : options.token;
+  try {
+    return await rawRequest(path, { ...options, token });
+  } catch (error) {
+    let failure = error;
+    if (error.status !== 401 || (path.startsWith("/auth/") && path !== "/auth/me")) throw error;
+    if (isTauriRuntime() && options.token === undefined && desktopSession.hasSession() &&
+        error.code === "token_expired" && token === getToken()) {
+      token = await desktopSession.renew();
+      try { return await rawRequest(path, { ...options, token }); }
+      catch (retryError) { if (retryError.status !== 401) throw retryError; failure = retryError; }
+    }
+    if (isTauriRuntime() && desktopSession.hasSession()) {
+      if (token === getToken()) await desktopSession.invalidate(token);
+    } else rejectSession(token);
+    throw failure;
+  }
 }
 
 // Auth
@@ -54,11 +72,13 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ username, email, password }),
     }),
-  login: (email, password) =>
-    request("/auth/login", {
+  login: (email, password) => {
+    const send = () => request("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+      body: JSON.stringify({ email, password, ...(isTauriRuntime() ? { persistent: true } : {}) }),
+    });
+    return isTauriRuntime() ? desktopSession.login(send) : send();
+  },
   me: () => request("/auth/me"),
   forgotPassword: (email) =>
     request("/auth/forgot-password", {

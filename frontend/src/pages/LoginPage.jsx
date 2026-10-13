@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { isBrowserRuntime } from "../utils/runtime";
 import { trackEvent } from "../utils/analytics";
+import { buildAuthLink, getAuthRedirect } from "../utils/authRedirect";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = getAuthRedirect(location.search);
   const showDesktopDownload = isBrowserRuntime();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +22,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/");
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -80,7 +83,7 @@ export default function LoginPage() {
                 Password
               </label>
               <Link
-                to="/forgot-password"
+                to={buildAuthLink("/forgot-password", returnTo)}
                 className="text-[10px] text-neon-cyan/70 hover:text-neon-cyan uppercase tracking-[0.15em] font-display transition-colors duration-200"
               >
                 Forgot password?
@@ -138,7 +141,7 @@ export default function LoginPage() {
 
         <p className="mt-4 text-center text-sm text-cyber-muted">
           No account?{" "}
-          <Link to="/register" className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
+          <Link to={buildAuthLink("/register", returnTo)} className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
             Register
           </Link>
         </p>

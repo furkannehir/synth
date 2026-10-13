@@ -3,6 +3,7 @@ import { applyDMEvent, mergeDMMessages } from "../api/dmMessages";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { dms as dmsApi, friends as friendsApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import MessageContent from "./MessageContent";
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -140,7 +141,7 @@ function MessageBubble({ msg, isOwn, onEdit, onDelete, editingId, onCancelEdit, 
           </div>
         ) : (
           <p className="text-sm text-cyber-text/85 leading-relaxed whitespace-pre-wrap break-words font-mono">
-            {msg.content}
+            <MessageContent content={msg.content} />
           </p>
         )}
       </div>
@@ -279,7 +280,7 @@ export default function DMPanel({ friend, onFriendRemoved }) {
     if (!friend) return;
 
     const disconnect = connectChatStream({
-      url: dmsApi.eventsUrl(friend.id),
+      url: () => dmsApi.eventsUrl(friend.id),
       loadHistory: () => dmsApi.list(friend.id),
       onHistory: (data) => {
         const fetched = data.messages || [];

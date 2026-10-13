@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import LoginPage from "./pages/LoginPage";
@@ -8,9 +8,13 @@ import InvitePage from "./pages/InvitePage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DownloadPage from "./pages/DownloadPage";
+import { buildAuthLink, getAuthRedirect, getLocationPath } from "./utils/authRedirect";
+import SessionStatus from "./components/SessionStatus";
+import DesktopLinkBridge from "./components/DesktopLinkBridge";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -28,13 +32,15 @@ function ProtectedRoute({ children }) {
     );
   }
 
-  return user ? children : <Navigate to="/login" replace />;
+  return user ? children :
+    <Navigate to={buildAuthLink("/login", getLocationPath(location))} replace />;
 }
 
 function GuestRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return null;
-  return user ? <Navigate to="/" replace /> : children;
+  return user ? <Navigate to={getAuthRedirect(location.search)} replace /> : children;
 }
 
 export default function App() {
@@ -42,6 +48,8 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+          <DesktopLinkBridge />
+          <SessionStatus>
           <Routes>
             <Route
               path="/login"
@@ -73,6 +81,7 @@ export default function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </SessionStatus>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "process:default",
-    "updater:default"
+    "updater:default",
+    "deep-link:allow-get-current",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://*" }, { "url": "http://*" }] }
   ]
 }

@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { auth as authApi } from "../api/client";
+import { buildAuthLink, getAuthRedirect } from "../utils/authRedirect";
 
 export default function ForgotPasswordPage() {
+  const location = useLocation();
+  const returnTo = getAuthRedirect(location.search);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -105,7 +108,7 @@ export default function ForgotPasswordPage() {
 
         <p className="mt-6 text-center text-sm text-cyber-muted">
           Remembered?{" "}
-          <Link to="/login" className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
+          <Link to={buildAuthLink("/login", returnTo)} className="text-neon-pink hover:text-glow-pink transition-all duration-300 font-display font-semibold">
             Log In
           </Link>
         </p>

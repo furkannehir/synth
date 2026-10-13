@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { servers as serversApi } from "../api/client";
+import { useAuth } from "./AuthContext";
 
 const ServerPresenceContext = createContext({
   members: [],
@@ -8,6 +9,7 @@ const ServerPresenceContext = createContext({
 });
 
 export function ServerPresenceProvider({ server, children }) {
+  const { accessToken } = useAuth();
   const [members, setMembers] = useState([]);
   const [voiceChannels, setVoiceChannels] = useState({});
   const [connected, setConnected] = useState(false);
@@ -58,7 +60,7 @@ export function ServerPresenceProvider({ server, children }) {
       es.close();
       esRef.current = null;
     };
-  }, [server]);
+  }, [server, accessToken]);
 
   return (
     <ServerPresenceContext.Provider value={{ members, voiceChannels, connected }}>

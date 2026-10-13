@@ -36,6 +36,7 @@
     ]
   },
   "plugins": {
+    "deep-link": { "desktop": { "schemes": ["synthapp"] } },
     "updater": {
       "endpoints": [
         "https://github.com/furkannehir/synth/releases/latest/download/latest.json"

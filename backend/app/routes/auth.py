@@ -1,4 +1,5 @@
-from flask import jsonify
+from datetime import timedelta
+from flask import current_app, jsonify
 from flask_smorest import Blueprint
 from flask_jwt_extended import create_access_token
 
@@ -7,10 +8,12 @@ from app.services.auth_service import (
 )
 from app.middleware.auth_middleware import auth_required
 from app.models import user as user_model
+from app.models import desktop_session
 from app.schemas import (
     RegisterSchema, LoginSchema,
     AuthResponseSchema, UserResponseSchema,
     ForgotPasswordSchema, ResetPasswordSchema,
+    RefreshSessionSchema, RevokeSessionSchema,
 )
 
 blp = Blueprint(
@@ -56,10 +59,53 @@ def login_route(data):
     except AuthError as exc:
         return jsonify({"error": exc.message}), exc.status_code
 
+    if data.get("persistent"):
+        try:
+            session, refresh, revocation = desktop_session.create(result.user["id"], result.session_version)
+        except desktop_session.DesktopSessionError as exc:
+            return jsonify({"error": str(exc), "code": "session_revoked"}), 401
+        return jsonify(_desktop_tokens(session, refresh, revocation, result.user)), 200
+
     token = create_access_token(identity=result.user["id"],
                                 additional_claims={"session_version": result.session_version})
 
     return jsonify({"user": result.user, "access_token": token}), 200
+
+
+def _desktop_tokens(session, refresh=None, revocation=None, user=None):
+    lifetime = timedelta(minutes=current_app.config.get("DESKTOP_ACCESS_TOKEN_MINUTES", 15))
+    token = create_access_token(identity=str(session["user_id"]), expires_delta=lifetime,
+                                additional_claims={"session_version": session["session_version"],
+                                                   "desktop_session": session["_id"]})
+    data = {"access_token": token, "expires_in": int(lifetime.total_seconds())}
+    if user is not None:
+        data["user"] = user
+    if refresh is not None:
+        data["refresh_token"] = refresh
+    if revocation is not None:
+        data["revocation_token"] = revocation
+    return data
+
+
+@blp.route("/refresh", methods=["POST"])
+@blp.arguments(RefreshSessionSchema)
+@blp.response(200, AuthResponseSchema)
+def refresh_session(data):
+    try:
+        session = desktop_session.rotate(data["refresh_token"], data["next_refresh_token"])
+    except desktop_session.DesktopSessionError as exc:
+        return jsonify({"error": str(exc), "code": "session_revoked"}), 401
+    return jsonify(_desktop_tokens(session, data["next_refresh_token"])), 200
+
+
+@blp.route("/logout", methods=["POST"])
+@blp.arguments(RevokeSessionSchema)
+def revoke_session(data):
+    try:
+        desktop_session.revoke(data["revocation_token"])
+    except desktop_session.DesktopSessionError:
+        pass  # Idempotent; never reveal whether a credential or account exists.
+    return jsonify({"message": "Signed out."}), 200
 
 
 # ── GET /api/auth/me ────────────────────────────────────────
