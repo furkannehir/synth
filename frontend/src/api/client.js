@@ -1,3 +1,5 @@
+import { rejectSession } from "./session";
+
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 export function getToken() {
@@ -27,18 +29,18 @@ function sseUrl(path) {
 }
 
 async function request(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...options.headers };
-  const token = getToken();
+  const { token = getToken(), ...fetchOptions } = options;
+  const headers = { "Content-Type": "application/json", ...fetchOptions.headers };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
 
   const data = await res.json();
   if (!res.ok) {
-    if (res.status === 401 && !path.startsWith("/auth/")) {
-      clearToken();
+    if (res.status === 401 && (!path.startsWith("/auth/") || path === "/auth/me")) {
+      rejectSession(token);
     }
     throw new Error(data.message || data.error || "Request failed");
   }
@@ -104,8 +106,12 @@ export const voice = {
 
 // Presence
 export const presence = {
-  heartbeat: () => request("/presence/heartbeat", { method: "POST" }),
-  offline: () => request("/presence/offline", { method: "POST" }),
+  heartbeat: (token, sessionId) => request("/presence/heartbeat", {
+    method: "POST", token, body: JSON.stringify({ session_id: sessionId }),
+  }),
+  offline: (token, sessionId) => request("/presence/offline", {
+    method: "POST", token, keepalive: true, body: JSON.stringify({ session_id: sessionId }),
+  }),
 };
 
 // Invites

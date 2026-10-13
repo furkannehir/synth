@@ -2,6 +2,8 @@ import secrets
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from app.extensions import mongo
 
 
@@ -46,13 +48,7 @@ def _generate_code(length=8):
 
 def create(server_id: str, created_by: str,
            max_uses: int = 0, expires_at: datetime | None = None) -> dict:
-    code = _generate_code()
-    # Ensure uniqueness (extremely unlikely collision, but be safe)
-    while _col().find_one({"code": code}):
-        code = _generate_code()
-
     doc = {
-        "code": code,
         "server_id": ObjectId(server_id),
         "created_by": ObjectId(created_by),
         "max_uses": max_uses,
@@ -60,7 +56,14 @@ def create(server_id: str, created_by: str,
         "expires_at": expires_at,
         "created_at": datetime.now(timezone.utc),
     }
-    _col().insert_one(doc)
+    while True:
+        doc["code"] = _generate_code()
+        try:
+            _col().insert_one(doc)
+            break
+        except DuplicateKeyError:
+            # The unique index, rather than a read, arbitrates concurrent creates.
+            doc.pop("_id", None)
     return doc
 
 
@@ -79,8 +82,23 @@ def find_by_server_and_creator(server_id: str, created_by: str) -> list[dict]:
     }))
 
 
-def increment_uses(code: str):
-    _col().update_one({"code": code}, {"$inc": {"uses": 1}})
+def claim_use(invite_id: ObjectId, now: datetime) -> dict | None:
+    """Reserve a use only while this exact invite is active and below its limit."""
+    return _col().find_one_and_update({
+        "_id": invite_id,
+        "$and": [
+            {"$or": [{"expires_at": None}, {"expires_at": {"$gt": now}}]},
+            {"$or": [{"max_uses": 0}, {"max_uses": {"$exists": False}},
+                     {"$expr": {"$lt": [{"$ifNull": ["$uses", 0]}, "$max_uses"]}}]},
+        ],
+    }, {"$inc": {"uses": 1, "pending_uses": 1}}, return_document=ReturnDocument.AFTER)
+
+
+def finish_use(invite_id: ObjectId, *, refund: bool = False):
+    changes = {"pending_uses": -1}
+    if refund:
+        changes["uses"] = -1
+    _col().update_one({"_id": invite_id, "pending_uses": {"$gt": 0}}, {"$inc": changes})
 
 
 def expire_by_code(code: str, expired_at: datetime):
@@ -99,7 +117,8 @@ def delete_stale(now: datetime) -> int:
     result = _col().delete_many({
         "$or": [
             {"expires_at": {"$ne": None, "$lte": now}},
-            {"max_uses": {"$gt": 0}, "$expr": {"$gte": ["$uses", "$max_uses"]}},
+            {"max_uses": {"$gt": 0}, "pending_uses": {"$not": {"$gt": 0}},
+             "$expr": {"$gte": ["$uses", "$max_uses"]}},
         ]
     })
     return result.deleted_count

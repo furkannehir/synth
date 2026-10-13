@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 from app.extensions import mongo
 
 
@@ -44,10 +45,13 @@ def seed_default(owner_id: str | None = None):
 # ── Queries ─────────────────────────────────────────────────
 
 def find_by_id(server_id: str):
-    return _col().find_one({"_id": ObjectId(server_id)})
+    if not ObjectId.is_valid(server_id):
+        return None
+    return _col().find_one({"_id": ObjectId(server_id), "deleting": {"$ne": True}})
 
 
 def find_by_name(name: str):
+    # The unique index still reserves the name until physical cleanup finishes.
     return _col().find_one({"name": name})
 
 
@@ -56,12 +60,12 @@ def find_default():
 
 
 def find_all():
-    return list(_col().find())
+    return list(_col().find({"deleting": {"$ne": True}}))
 
 
 def find_by_member(user_id: str):
     """Return all servers a user has joined."""
-    return list(_col().find({"members": ObjectId(user_id)}))
+    return list(_col().find({"members": ObjectId(user_id), "deleting": {"$ne": True}}))
 
 
 # ── Mutations ───────────────────────────────────────────────
@@ -82,7 +86,7 @@ def update(server_id: str, updates: dict):
     allowed = {"name", "icon"}
     safe = {k: v for k, v in updates.items() if k in allowed}
     if safe:
-        _col().update_one({"_id": ObjectId(server_id)}, {"$set": safe})
+        _col().update_one({"_id": ObjectId(server_id), "deleting": {"$ne": True}}, {"$set": safe})
     return find_by_id(server_id)
 
 
@@ -90,11 +94,20 @@ def delete(server_id: str):
     _col().delete_one({"_id": ObjectId(server_id)})
 
 
-def add_member(server_id: str, user_id: str):
-    _col().update_one(
-        {"_id": ObjectId(server_id)},
+def mark_deleting(server_id: str, owner_id: str) -> dict | None:
+    """Persist deletion intent before touching any child data."""
+    return _col().find_one_and_update(
+        {"_id": ObjectId(server_id), "owner_id": ObjectId(owner_id), "is_default": {"$ne": True}},
+        {"$set": {"deleting": True}}, return_document=ReturnDocument.AFTER,
+    )
+
+
+def add_member(server_id: str, user_id: str) -> bool:
+    result = _col().update_one(
+        {"_id": ObjectId(server_id), "deleting": {"$ne": True}, "members": {"$ne": ObjectId(user_id)}},
         {"$addToSet": {"members": ObjectId(user_id)}},
     )
+    return result.modified_count > 0
 
 
 def remove_member(server_id: str, user_id: str):
@@ -107,6 +120,7 @@ def remove_member(server_id: str, user_id: str):
 def is_member(server_id: str, user_id: str) -> bool:
     doc = _col().find_one({
         "_id": ObjectId(server_id),
+        "deleting": {"$ne": True},
         "members": ObjectId(user_id),
     })
     return doc is not None

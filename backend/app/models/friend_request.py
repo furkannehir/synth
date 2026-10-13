@@ -39,6 +39,8 @@ def ensure_indexes():
 # ── Queries ─────────────────────────────────────────────────
 
 def find_by_id(request_id: str):
+    if not ObjectId.is_valid(request_id):
+        return None
     return _col().find_one({"_id": ObjectId(request_id)})
 
 

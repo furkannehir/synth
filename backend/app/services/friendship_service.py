@@ -88,6 +88,8 @@ def cancel_request(user_id: str, request_id: str):
 
 def remove_friend(user_id: str, friend_id: str):
     """Remove an existing friend (bidirectional)."""
+    if user_model.find_by_id(friend_id) is None:
+        raise FriendshipError("User not found.", 404)
     if not user_model.are_friends(user_id, friend_id):
         raise FriendshipError("You are not friends with this user.", 400)
 

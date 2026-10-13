@@ -67,6 +67,7 @@ class MediaServerPort(ABC):
         *,
         can_publish: bool = True,
         can_subscribe: bool = True,
+        ttl_seconds: int = 60,
     ) -> str:
         """Return a short-lived JWT the client uses to connect."""
         ...

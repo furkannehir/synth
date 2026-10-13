@@ -24,9 +24,12 @@ class MockMediaServer(MediaServerPort):
     def __init__(self):
         self.rooms: dict[str, RoomInfo] = {}
         self.participants: dict[str, list[ParticipantInfo]] = {}
+        self.token_identities: dict[str, str] = {}
 
-    def generate_token(self, room_name, identity, name="", *, can_publish=True, can_subscribe=True):
-        return f"mock-jwt-{room_name}-{identity}"
+    def generate_token(self, room_name, identity, name="", *, can_publish=True, can_subscribe=True, ttl_seconds=60):
+        token = f"mock-jwt-{room_name}-{identity}"
+        self.token_identities[token] = identity
+        return token
 
     def create_room(self, name, *, empty_timeout=300, max_participants=0):
         if name not in self.rooms:
@@ -115,11 +118,11 @@ def give_permission(user_id, server_id, *perms):
     with app.app_context():
         from app.models import role as role_model
         role_name = f"_test_{'_'.join(perms)}_{user_id[-4:]}"
-        existing = role_model.find_by_name(role_name)
+        existing = role_model.find_by_name(role_name, server_id)
         if existing:
             role_id = str(existing["_id"])
         else:
-            role_id = role_model.create(role_name, list(perms))
+            role_id = role_model.create(role_name, list(perms), server_id)
         role_model.assign_role(user_id, role_id, server_id)
     return role_id
 
@@ -203,6 +206,7 @@ check("Has token", "token" in data)
 check("Has url", "url" in data)
 check("Has room", "room" in data)
 check("Token contains room+identity", owner["id"] in data.get("token", ""))
+owner_identity = mock_media.token_identities[data["token"]]
 
 # ════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
@@ -213,6 +217,7 @@ data = r.get_json()
 print(f"   Status: {r.status_code}")
 check("Status 200", r.status_code == 200)
 check("Has token", "token" in data)
+member_identity = mock_media.token_identities[data["token"]]
 
 # ════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
@@ -256,8 +261,8 @@ print("=" * 60)
 mock_media.rooms.clear()
 mock_media.participants.clear()
 mock_media.create_room(room_name)
-mock_media.add_fake_participant(room_name, owner["id"], "voice_owner")
-mock_media.add_fake_participant(room_name, member["id"], "voice_member")
+mock_media.add_fake_participant(room_name, owner_identity, "voice_owner")
+mock_media.add_fake_participant(room_name, member_identity, "voice_member")
 r = client.get(f"{VOICE_BASE}/participants", headers=auth(owner_token))
 data = r.get_json()
 print(f"   Status: {r.status_code}")
@@ -275,7 +280,7 @@ check("Status 200", r.status_code == 200)
 check("Success message", "Left" in data.get("message", ""))
 # Verify removed
 remaining = mock_media.list_participants(room_name)
-check("Owner no longer in participants", all(p.identity != owner["id"] for p in remaining))
+check("Owner no longer in participants", all(p.identity != owner_identity for p in remaining))
 
 # ════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
@@ -284,7 +289,7 @@ print("=" * 60)
 mock_media.rooms.clear()
 mock_media.participants.clear()
 mock_media.create_room(room_name)
-mock_media.add_fake_participant(room_name, member["id"], "voice_member")
+mock_media.add_fake_participant(room_name, member_identity, "voice_member")
 r = client.delete(
     f"{VOICE_BASE}/participants/{member['id']}",
     headers=auth(owner_token),
@@ -294,7 +299,7 @@ data = r.get_json()
 check("Status 200", r.status_code == 200)
 check("Removed message", "removed" in data.get("message", "").lower())
 remaining = mock_media.list_participants(room_name)
-check("Member removed", all(p.identity != member["id"] for p in remaining))
+check("Member removed", all(p.identity != member_identity for p in remaining))
 
 # ════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
@@ -315,8 +320,11 @@ print("=" * 60)
 mock_media.rooms.clear()
 mock_media.participants.clear()
 mock_media.create_room(room_name)
+r = client.post(f"{VOICE_BASE}/join", headers=auth(member_token))
+assert r.status_code == 200
+member_identity = mock_media.token_identities[r.get_json()["token"]]
 track = TrackInfo(sid="TR_audio_001", name="microphone", kind="audio", muted=False)
-mock_media.add_fake_participant(room_name, member["id"], "voice_member", tracks=[track])
+mock_media.add_fake_participant(room_name, member_identity, "voice_member", tracks=[track])
 r = client.post(
     f"{VOICE_BASE}/participants/{member['id']}/mute",
     json={"track_sid": "TR_audio_001", "muted": True},

@@ -3,6 +3,7 @@ import { Video, Monitor } from "lucide-react";
 import { channels as channelsApi, invites as invitesApi } from "../api/client";
 import { useServerPresence } from "../context/ServerPresenceContext";
 import { getInviteCacheTtlHours, getInviteCacheTtlMs } from "../utils/runtime";
+import { buildInviteLink } from "../utils/inviteLink";
 
 const INVITE_CACHE_PREFIX = "synth:invite-cache";
 const INVITE_EXPIRES_IN_HOURS = getInviteCacheTtlHours();
@@ -92,7 +93,8 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
   const { voiceChannels } = useServerPresence();
 
   const [channelList, setChannelList] = useState([]);
-  const [inviteCode, setInviteCode] = useState(null);
+  const [inviteLink, setInviteLink] = useState(null);
+  const [inviteError, setInviteError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
@@ -101,7 +103,8 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
   const [createChannelError, setCreateChannelError] = useState("");
 
   useEffect(() => {
-    setInviteCode(null);
+    setInviteLink(null);
+    setInviteError("");
     setShowCreateChannel(false);
     setCreateChannelError("");
     setNewChannelName("");
@@ -143,10 +146,11 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
   const handleCreateInvite = async () => {
     setInviteLoading(true);
+    setInviteError("");
     try {
       const cachedInvite = readCachedInvite(server.id);
       if (cachedInvite && !isCachedInviteExpired(cachedInvite)) {
-        setInviteCode(cachedInvite.code);
+        setInviteLink(buildInviteLink(cachedInvite.code));
         return;
       }
 
@@ -156,10 +160,10 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
       const code = await createFreshInvite();
       if (code) {
-        setInviteCode(code);
+        setInviteLink(buildInviteLink(code));
       }
-    } catch {
-      // silently fail if no permission
+    } catch (error) {
+      setInviteError(error.message);
     } finally {
       setInviteLoading(false);
     }
@@ -167,25 +171,31 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
   const handleGenerateFreshInvite = async () => {
     setInviteLoading(true);
+    setInviteError("");
     try {
       const code = await createFreshInvite();
       if (code) {
-        setInviteCode(code);
+        setInviteLink(buildInviteLink(code));
       }
-    } catch {
-      // silently fail if no permission
+    } catch (error) {
+      setInviteError(error.message);
     } finally {
       setInviteLoading(false);
     }
   };
 
-  const copyInviteLink = () => {
-    const link = `${window.location.origin}/invite/${inviteCode}`;
-    navigator.clipboard.writeText(link);
+  const copyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setInviteError("");
+    } catch {
+      setInviteError("Could not copy the invite. Select and copy the link above.");
+    }
   };
 
   const closeInvite = () => {
-    setInviteCode(null);
+    setInviteLink(null);
+    setInviteError("");
   };
 
   const openCreateChannel = (channelType = "text") => {
@@ -326,11 +336,11 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
 
         {/* Invite section */}
         <div className="px-3 py-2 border-b border-cyber-border/20">
-          {inviteCode ? (
+          {inviteLink ? (
             <div className="flex items-center gap-1.5">
               <input
                 readOnly
-                value={`${window.location.origin}/invite/${inviteCode}`}
+                value={inviteLink}
                 className="flex-1 text-[10px] bg-cyber-bg/60 text-neon-cyan border border-cyber-border/30
                          rounded px-2 py-1.5 font-mono truncate outline-none"
               />
@@ -379,6 +389,7 @@ export default function ChannelList({ server, activeChannel, onSelect }) {
               {inviteLoading ? "Creating..." : "+ Create Invite"}
             </button>
           )}
+          {inviteError && <p role="alert" className="mt-2 text-xs text-neon-red">{inviteError}</p>}
         </div>
 
         <div className="flex-1 overflow-y-auto py-3">

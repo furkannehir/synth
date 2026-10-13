@@ -2,13 +2,13 @@ import bcrypt
 import hashlib
 import secrets
 from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
 
 import resend
 from flask import current_app
 from pymongo.errors import DuplicateKeyError
 
 from app.models import user as user_model
-from app.models import role as role_model
 
 
 class AuthError(Exception):
@@ -19,10 +19,16 @@ class AuthError(Exception):
         self.status_code = status_code
 
 
-def register(username: str, email: str, password: str) -> dict:
+@dataclass(frozen=True)
+class AuthResult:
+    user: dict
+    session_version: int
+
+
+def register(username: str, email: str, password: str) -> AuthResult:
     """
     Register a new user.
-    Returns the serialised user dict.
+    Returns the serialised user and the checked session version.
     Raises AuthError on validation / duplicate issues.
     """
     # ── Validation ──────────────────────────────────────────
@@ -51,13 +57,13 @@ def register(username: str, email: str, password: str) -> dict:
     # Roles are now assigned per-server (on join), not globally.
 
     user = user_model.find_by_id(user_id)
-    return user_model.to_dict(user)
+    return AuthResult(user_model.to_dict(user), 0)
 
 
-def login(email: str, password: str) -> dict:
+def login(email: str, password: str) -> AuthResult:
     """
     Authenticate by email + password.
-    Returns the serialised user dict.
+    Returns the serialised user and the checked session version.
     Raises AuthError if credentials are invalid.
     """
     if not email or not password:
@@ -72,9 +78,11 @@ def login(email: str, password: str) -> dict:
         raise AuthError("Invalid email or password.", 401)
 
     # Mark user as online
-    user_model.set_online(str(user["_id"]), True)
+    authenticated = user_model.mark_authenticated_login(user)
+    if authenticated is None:
+        raise AuthError("Credentials changed. Please sign in again.", 401)
 
-    return user_model.to_dict(user)
+    return AuthResult(user_model.to_dict(authenticated), user.get("session_version", 0))
 
 
 def forgot_password(email: str) -> None:
@@ -93,7 +101,7 @@ def forgot_password(email: str) -> None:
 
     user_model.set_reset_token(str(user["_id"]), token_hash, expires)
 
-    frontend_url = current_app.config.get("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = current_app.config["FRONTEND_URL"].rstrip("/")
     reset_link = f"{frontend_url}/reset-password?token={raw_token}"
 
     resend.api_key = current_app.config["RESEND_API_KEY"]
@@ -129,4 +137,9 @@ def reset_password(raw_token: str, new_password: str) -> None:
         bcrypt.gensalt(),
     ).decode("utf-8")
 
-    user_model.update_password_and_clear_token(str(user["_id"]), new_hash)
+    if not user_model.update_password_and_clear_token(str(user["_id"]), new_hash, token_hash):
+        raise AuthError("Reset link is invalid or has expired.", 400)
+
+    # Revocation is durable even if the media service is temporarily unavailable.
+    from app.services import voice_service
+    voice_service.revoke_user_sessions(str(user["_id"]))

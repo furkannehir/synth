@@ -1,8 +1,8 @@
-import json
 from flask import jsonify, request, Response, stream_with_context
 from flask_smorest import Blueprint
+from flask_jwt_extended import get_jwt
 
-from app.middleware.auth_middleware import auth_required
+from app.middleware.auth_middleware import auth_required, ensure_session, SessionError
 from app.models import role as role_model
 from app.models import server as server_model
 from app.models import channel as channel_model
@@ -27,8 +27,9 @@ BEARER = [{"BearerAuth": []}]
 @blp.route("", methods=["GET"])
 @blp.doc(security=BEARER)
 @blp.response(200, MessageListSchema)
+@blp.alt_response(400, description="Invalid pagination cursor")
 @blp.alt_response(403, description="Not a member / not a text channel")
-@blp.alt_response(404, description="Channel not found")
+@blp.alt_response(404, description="Channel or pagination cursor not found")
 @auth_required
 def list_messages(channel_id, current_user=None):
     """Fetch paginated message history. Pass ?before=<message_id> for older pages."""
@@ -148,29 +149,36 @@ def channel_events(channel_id, current_user=None):
     Connect with EventSource('/api/channels/<id>/messages/events?token=<jwt>').
     """
     user_id = str(current_user["_id"])
+    claims = get_jwt().copy()
 
     # Validate the user is a member and the channel is text-type
     try:
-        message_service.list_messages(channel_id, user_id, before=None)
-        # list_messages does 0 rows but validates membership & type
+        message_service.validate_channel_access(channel_id, user_id)
     except MessageError as exc:
         # Return a plain 403 — EventSource ignores non-2xx gracefully
         return jsonify({"error": exc.message}), exc.status_code
 
-    q = channel_event_bus.subscribe(channel_id)
+    q = channel_event_bus.subscribe(channel_id, request.headers.get("Last-Event-ID"))
 
     def generate():
         import queue
         try:
-            # Send a keep-alive comment immediately so the browser knows the stream is open
-            yield ": connected\n\n"
+            ensure_session(user_id, claims)
+            message_service.validate_channel_access(channel_id, user_id)
+            yield f'id: {q.initial_revision}\ndata: {{"type":"connected","data":{{"revision":{q.connected_revision}}}}}\n\n'
             while True:
                 try:
                     event = q.get(timeout=25.0)
-                    yield f"data: {json.dumps(event)}\n\n"
+                    payload = message_service.resolve_event(channel_id, event.event)
+                    ensure_session(user_id, claims)
+                    message_service.validate_channel_access(channel_id, user_id)
+                    yield event.sse(payload)
                 except queue.Empty:
-                    # Heartbeat to prevent proxy timeouts
+                    ensure_session(user_id, claims)
+                    message_service.validate_channel_access(channel_id, user_id)
                     yield ": heartbeat\n\n"
+        except (MessageError, SessionError):
+            return  # membership/channel access was revoked while connected
         finally:
             channel_event_bus.unsubscribe(channel_id, q)
 

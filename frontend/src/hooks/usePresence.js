@@ -1,21 +1,12 @@
-import { useEffect, useRef } from "react";
-import { presence } from "../api/client";
-
-const HEARTBEAT_MS = 30_000;
+import { useEffect } from "react";
+import { getToken, presence } from "../api/client";
+import { startPresence } from "../api/presenceLifecycle";
 
 export function usePresence(active) {
-  const timer = useRef(null);
-
   useEffect(() => {
     if (!active) return;
-
-    const beat = () => presence.heartbeat().catch(() => {});
-    beat();
-    timer.current = setInterval(beat, HEARTBEAT_MS);
-
-    return () => {
-      clearInterval(timer.current);
-      presence.offline().catch(() => {});
-    };
+    const token = getToken();
+    if (!token) return;
+    return startPresence({ token, heartbeat: presence.heartbeat, offline: presence.offline });
   }, [active]);
 }

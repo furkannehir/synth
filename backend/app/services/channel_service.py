@@ -1,3 +1,4 @@
+from bson import ObjectId
 from app.models import channel as channel_model
 from app.models import server as server_model
 
@@ -28,7 +29,7 @@ def _require_channel(channel_id: str) -> dict:
 def _require_channel_in_server(channel_id: str, server_id: str) -> dict:
     """Fetch a channel and verify it belongs to the given server."""
     channel = _require_channel(channel_id)
-    if str(channel["server_id"]) != server_id:
+    if channel["server_id"] != ObjectId(server_id):
         raise ChannelError("Channel not found.", 404)
     return channel
 
@@ -97,6 +98,14 @@ def create_channel(
         position=position,
         user_limit=user_limit,
     )
+    if server_model.find_by_id(server_id) is None:
+        # Keep the ID in the deletion record so a delayed message write with
+        # legacy fields is still attributable after removing this channel.
+        from app.extensions import mongo
+        mongo.db.server_deletions.update_one({"_id": server["_id"]},
+            {"$addToSet": {"channel_ids": ObjectId(channel_id)}})
+        channel_model.delete(channel_id)
+        raise ChannelError("Server not found.", 404)
     return channel_model.to_dict(channel_model.find_by_id(channel_id))
 
 
@@ -118,7 +127,7 @@ def update_channel(
         if len(new_name) > 100:
             raise ChannelError("Channel name cannot exceed 100 characters.")
         existing = channel_model.find_by_name_in_server(server_id, new_name)
-        if existing and str(existing["_id"]) != channel_id:
+        if existing and existing["_id"] != channel["_id"]:
             raise ChannelError(
                 f"A channel named '{new_name}' already exists in this server.",
                 409,
@@ -138,6 +147,11 @@ def update_channel(
             raise ChannelError("User limit cannot be negative.")
 
     updated = channel_model.update(channel_id, updates)
+    if updated is None or server_model.find_by_id(server_id) is None:
+        raise ChannelError("Channel not found.", 404)
+    if channel.get("type") == "voice" and updated.get("type") != "voice":
+        from app.services.voice_service import revoke_channel_sessions
+        revoke_channel_sessions(channel_id)
     return channel_model.to_dict(updated)
 
 
@@ -154,4 +168,6 @@ def delete_channel(channel_id: str, server_id: str, user_id: str):
     message_model.delete_by_channel(channel_id)
 
     channel_model.delete(channel_id)
+    from app.services.voice_service import revoke_channel_sessions
+    revoke_channel_sessions(channel_id)
 

@@ -1,16 +1,17 @@
-import json
+from bson import ObjectId
 from flask import jsonify, request, Response, stream_with_context
 from flask_smorest import Blueprint
+from flask_jwt_extended import get_jwt
 
-from app.middleware.auth_middleware import auth_required
+from app.middleware.auth_middleware import auth_required, ensure_session, SessionError
 from app.services.dm_service import DMError
 from app.services import dm_service
 from app.models import direct_message as dm_model
 from app.extensions import dm_event_bus
 from app.schemas import (
     SendDMSchema, EditDMSchema,
-    DMSchema, DMResponseSchema, DMListSchema, MessageSchema,
-    ConversationListSchema,
+    DMResponseSchema, DMListSchema, MessageSchema,
+    ConversationListSchema, ConversationQuerySchema,
 )
 
 blp = Blueprint(
@@ -26,13 +27,12 @@ BEARER = [{"BearerAuth": []}]
 @blp.route("/conversations", methods=["GET"])
 @blp.doc(security=BEARER)
 @blp.response(200, ConversationListSchema)
+@blp.alt_response(422, description="Invalid pagination parameters")
 @auth_required
-def list_conversations(current_user=None):
+@blp.arguments(ConversationQuerySchema, location="query")
+def list_conversations(query, current_user=None):
     """List recent conversations."""
-    offset = int(request.args.get("offset", 0))
-    limit = int(request.args.get("limit", 20))
-    
-    cvs = dm_service.get_conversations(str(current_user["_id"]), offset, limit)
+    cvs = dm_service.get_conversations(str(current_user["_id"]), query["offset"], query["limit"])
     return jsonify({"conversations": cvs}), 200
 
 
@@ -49,7 +49,9 @@ def get_unread_count(current_user=None):
 @blp.route("/<friend_id>/messages", methods=["GET"])
 @blp.doc(security=BEARER)
 @blp.response(200, DMListSchema)
+@blp.alt_response(400, description="Invalid friend ID or pagination cursor")
 @blp.alt_response(403, description="Not friends")
+@blp.alt_response(404, description="Pagination cursor not found in this conversation")
 @auth_required
 def list_dms(friend_id, current_user=None):
     """Fetch paginated DM history. Pass ?before=<dm_id> for older pages."""
@@ -106,6 +108,7 @@ def edit_dm(data, friend_id, dm_id, current_user=None):
             dm_id=dm_id,
             user_id=str(current_user["_id"]),
             content=data["content"],
+            friend_id=friend_id,
         )
     except DMError as exc:
         return jsonify({"error": exc.message}), exc.status_code
@@ -129,12 +132,13 @@ def delete_dm(friend_id, dm_id, current_user=None):
         dm_service.delete_dm(
             dm_id=dm_id,
             user_id=str(current_user["_id"]),
+            friend_id=friend_id,
         )
     except DMError as exc:
         return jsonify({"error": exc.message}), exc.status_code
 
     conv_key = dm_model.make_conversation_key(str(current_user["_id"]), friend_id)
-    dm_event_bus.publish(conv_key, {"type": "dm_delete", "data": {"id": dm_id}})
+    dm_event_bus.publish(conv_key, {"type": "dm_delete", "data": {"id": str(ObjectId(dm_id))}})
 
     return jsonify({"message": "Message deleted."}), 200
 
@@ -143,15 +147,25 @@ def delete_dm(friend_id, dm_id, current_user=None):
 @blp.route("/<friend_id>/messages/read", methods=["POST"])
 @blp.doc(security=BEARER)
 @blp.response(200, MessageSchema)
+@blp.alt_response(400, description="Invalid friend ID")
 @auth_required
 def read_dms(friend_id, current_user=None):
     """Mark all unread DMs from a friend as read."""
     user_id = str(current_user["_id"])
-    count = dm_service.mark_as_read(user_id, friend_id)
+    try:
+        receipt = dm_service.mark_as_read(user_id, friend_id)
+    except DMError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
     
-    if count > 0:
+    if receipt["count"] > 0:
         conv_key = dm_model.make_conversation_key(user_id, friend_id)
-        dm_event_bus.publish(conv_key, {"type": "dm_read", "data": {"by": user_id, "friend_id": friend_id}})
+        if receipt["message_ids"] is None:
+            dm_event_bus.publish(conv_key, {"type": "resync", "data": {}})
+        else:
+            dm_event_bus.publish(conv_key, {"type": "dm_read", "data": {
+                "by": user_id, "friend_id": str(ObjectId(friend_id)),
+                "message_ids": receipt["message_ids"],
+            }})
         
     return jsonify({"message": "Messages marked as read."}), 200
 
@@ -159,6 +173,8 @@ def read_dms(friend_id, current_user=None):
 # ── GET /api/dms/<friend_id>/messages/events ───────────────
 @blp.route("/<friend_id>/messages/events", methods=["GET"])
 @blp.doc(security=BEARER)
+@blp.alt_response(400, description="Invalid friend ID")
+@blp.alt_response(403, description="Not friends")
 @auth_required
 def dm_events(friend_id, current_user=None):
     """
@@ -166,25 +182,33 @@ def dm_events(friend_id, current_user=None):
     Connect with EventSource('/api/dms/<friend_id>/messages/events?token=<jwt>').
     """
     user_id = str(current_user["_id"])
+    claims = get_jwt().copy()
 
-    # Validate friendship
-    from app.models import user as user_model
-    if not user_model.are_friends(user_id, friend_id):
-        return jsonify({"error": "You can only message friends."}), 403
-
-    conv_key = dm_model.make_conversation_key(user_id, friend_id)
-    q = dm_event_bus.subscribe(conv_key)
+    try:
+        conv_key = dm_service.validate_conversation_access(user_id, friend_id)
+    except DMError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    q = dm_event_bus.subscribe(conv_key, request.headers.get("Last-Event-ID"))
 
     def generate():
         import queue
         try:
-            yield ": connected\n\n"
+            ensure_session(user_id, claims)
+            dm_service.validate_conversation_access(user_id, friend_id)
+            yield f'id: {q.initial_revision}\ndata: {{"type":"connected","data":{{"revision":{q.connected_revision}}}}}\n\n'
             while True:
                 try:
                     event = q.get(timeout=25.0)
-                    yield f"data: {json.dumps(event)}\n\n"
+                    payload = dm_service.resolve_event(user_id, friend_id, event.event)
+                    ensure_session(user_id, claims)
+                    dm_service.validate_conversation_access(user_id, friend_id)
+                    yield event.sse(payload)
                 except queue.Empty:
+                    ensure_session(user_id, claims)
+                    dm_service.validate_conversation_access(user_id, friend_id)
                     yield ": heartbeat\n\n"
+        except (DMError, SessionError):
+            return
         finally:
             dm_event_bus.unsubscribe(conv_key, q)
 

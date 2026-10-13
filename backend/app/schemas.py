@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, validate
 
 
 # ── Common ──────────────────────────────────────────────────
@@ -26,9 +26,11 @@ class LoginSchema(Schema):
 
 class RoleNestedSchema(Schema):
     id = fields.String(metadata={"description": "Role ID"})
+    server_id = fields.String(metadata={"description": "Owning server ID"})
     name = fields.String(metadata={"description": "Role name"})
     permissions = fields.List(fields.String(), metadata={"description": "Granted permissions"})
     is_default = fields.Boolean(metadata={"description": "Auto-assigned to new users"})
+    is_builtin = fields.Boolean(metadata={"description": "Built-in role in this server"})
     created_at = fields.String(metadata={"description": "ISO timestamp"})
 
 
@@ -78,9 +80,11 @@ class UpdateRoleSchema(Schema):
 
 class RoleSchema(Schema):
     id = fields.String(metadata={"description": "Role ID"})
+    server_id = fields.String(metadata={"description": "Owning server ID"})
     name = fields.String(metadata={"description": "Role name"})
     permissions = fields.List(fields.String(), metadata={"description": "Granted permissions"})
     is_default = fields.Boolean(metadata={"description": "Auto-assigned to new users"})
+    is_builtin = fields.Boolean(metadata={"description": "Built-in role in this server"})
     created_at = fields.String(metadata={"description": "ISO timestamp"})
 
 
@@ -134,11 +138,9 @@ class ServerListSchema(Schema):
 class MemberSchema(Schema):
     id = fields.String(metadata={"description": "User ID"})
     username = fields.String(metadata={"description": "Username"})
-    email = fields.String(metadata={"description": "Email"})
     avatar = fields.String(allow_none=True, metadata={"description": "Avatar URL"})
     is_online = fields.Boolean(metadata={"description": "Currently online"})
     last_seen = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
-    created_at = fields.String(allow_none=True, metadata={"description": "ISO timestamp"})
 
 
 class MemberListSchema(Schema):
@@ -205,7 +207,7 @@ class TrackSchema(Schema):
 
 
 class VoiceParticipantSchema(Schema):
-    identity = fields.String(metadata={"description": "Participant user ID"})
+    identity = fields.String(metadata={"description": "Opaque voice-session identity"})
     name = fields.String(metadata={"description": "Display name"})
     sid = fields.String(metadata={"description": "Participant session ID"})
     state = fields.String(metadata={"description": "Connection state"})
@@ -224,10 +226,12 @@ class MuteRequestSchema(Schema):
 # ── Invites ─────────────────────────────────────────────────
 
 class CreateInviteSchema(Schema):
-    max_uses = fields.Integer(load_default=0, metadata={"description": "Max uses (0 = unlimited)"})
+    max_uses = fields.Integer(load_default=0, strict=True, validate=validate.Range(min=0, max=2**63 - 1),
+                             metadata={"description": "Max uses (0 = unlimited)"})
     expires_in_hours = fields.Integer(
-        allow_none=True, load_default=None,
-        metadata={"description": "Hours until expiry (null = never)"},
+        allow_none=True, load_default=None, strict=True,
+        validate=validate.Range(min=0),
+        metadata={"description": "Hours until expiry (null = backend default, 0 = never)"},
     )
 
 
@@ -365,3 +369,8 @@ class ConversationSchema(Schema):
 
 class ConversationListSchema(Schema):
     conversations = fields.List(fields.Nested(ConversationSchema))
+
+
+class ConversationQuerySchema(Schema):
+    offset = fields.Integer(load_default=0, validate=validate.Range(min=0, max=2_147_483_647))
+    limit = fields.Integer(load_default=20, validate=validate.Range(min=1, max=50))

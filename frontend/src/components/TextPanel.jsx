@@ -1,3 +1,5 @@
+import { connectChatStream } from "../api/chatStream";
+import { createChannelState } from "../api/channelMessages";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { messages as messagesApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -214,6 +216,11 @@ function EmptyState({ channelName }) {
 
 export default function TextPanel({ channel }) {
   const { user } = useAuth();
+  return <TextChannelPanel key={`${user?.id || user?._id}:${channel?.id || "none"}`} channel={channel} user={user} />;
+}
+
+function TextChannelPanel({ channel, user }) {
+  const channelId = channel?.id;
   const [msgList, setMsgList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -226,7 +233,9 @@ export default function TextPanel({ channel }) {
   const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
-  const eventSourceRef = useRef(null);
+  const scopeRef = useRef(null);
+  const loadingMoreRef = useRef(false);
+  const sendingRef = useRef(false);
 
   const currentUserId = user?.id || user?._id;
 
@@ -235,133 +244,120 @@ export default function TextPanel({ channel }) {
     bottomRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  // ── Load initial history ────────────────────────────────
-  useEffect(() => {
-    if (!channel) return;
-    setMsgList([]);
-    setLoading(true);
-    setHasMore(true);
-    setError("");
-    setEditingId(null);
-    setInput("");
-
-    messagesApi
-      .list(channel.id)
-      .then((data) => {
-        const fetched = data.messages || [];
-        setMsgList(fetched);
-        setHasMore(fetched.length === 50);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [channel?.id]);
-
   // ── Scroll to bottom on initial load ───────────────────
   useEffect(() => {
     if (!loading) scrollToBottom("instant");
-  }, [loading]);
+  }, [loading, scrollToBottom]);
 
   // ── SSE — live updates ──────────────────────────────────
   useEffect(() => {
-    if (!channel) return;
+    if (!channelId) return;
 
-    // Clean up previous connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
+    const scope = createChannelState(channelId);
+    scopeRef.current = scope;
 
-    const es = new EventSource(messagesApi.eventsUrl(channel.id));
-    eventSourceRef.current = es;
-
-    es.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
+    const disconnect = connectChatStream({
+      url: messagesApi.eventsUrl(channelId),
+      loadHistory: async () => {
+        const localVersion = scope.mutationVersion;
+        const data = await messagesApi.list(channelId);
+        return { ...data, localVersion };
+      },
+      onHistory: (data) => {
+        const fetched = data.messages || [];
+        setMsgList(scope.replaceHistory(fetched, data.localVersion));
+        setHasMore(fetched.length === 50);
+        setLoading(false);
+        setError("");
+      },
+      onError: (error) => {
+        setError(error.message);
+        setLoading(false);
+      },
+      onEvent: (event) => {
+        setMsgList(scope.applyEvent(event));
         if (event.type === "message") {
-          setMsgList((prev) => {
-            // Deduplicate (in case we get an echo from our own send)
-            if (prev.some((m) => m.id === event.data.id)) return prev;
-            return [...prev, event.data];
-          });
           // Auto-scroll only if the user is near the bottom
           const el = scrollRef.current;
           if (el) {
             const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-            if (nearBottom) setTimeout(() => scrollToBottom("smooth"), 50);
+            if (nearBottom) setTimeout(() => { if (scope.active) scrollToBottom("smooth"); }, 50);
           }
-        } else if (event.type === "message_edit") {
-          setMsgList((prev) =>
-            prev.map((m) => (m.id === event.data.id ? { ...m, ...event.data } : m))
-          );
-        } else if (event.type === "message_delete") {
-          setMsgList((prev) => prev.filter((m) => m.id !== event.data.id));
         }
-      } catch {
-        // malformed SSE data — silently ignore
-      }
-    };
-
-    es.onerror = () => {
-      // EventSource auto-reconnects; no action needed
-    };
+      },
+    });
 
     return () => {
-      es.close();
-      eventSourceRef.current = null;
+      scope.close();
+      disconnect();
     };
-  }, [channel?.id]);
+  }, [channelId, scrollToBottom]);
 
   // ── Load older messages (infinite scroll up) ────────────
   const handleScroll = useCallback(async () => {
     const el = scrollRef.current;
-    if (!el || loadingMore || !hasMore || el.scrollTop > 80) return;
+    const scope = scopeRef.current;
+    if (!scope?.active || !el || loading || loadingMoreRef.current || !hasMore || el.scrollTop > 80) return;
 
     const oldest = msgList[0];
     if (!oldest) return;
 
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     const prevHeight = el.scrollHeight;
+    const historyVersion = scope.historyVersion;
 
     try {
-      const data = await messagesApi.list(channel.id, oldest.id);
+      const data = await messagesApi.list(channelId, oldest.id);
       const older = data.messages || [];
-      setMsgList((prev) => [...older, ...prev]);
+      const merged = scope.prependPage(older, historyVersion);
+      if (merged === null) return;
+      setMsgList(merged);
       setHasMore(older.length === 50);
+      setError("");
       // Maintain scroll position after prepending
       requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight - prevHeight;
+        if (scope.active && scope.historyVersion === historyVersion) el.scrollTop += el.scrollHeight - prevHeight;
       });
-    } catch {
-      // silently fail
+    } catch (error) {
+      if (scope.active && scope.historyVersion === historyVersion) setError(error.message);
     } finally {
-      setLoadingMore(false);
+      if (scope.active) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
     }
-  }, [channel?.id, msgList, loadingMore, hasMore]);
+  }, [channelId, msgList, loading, hasMore]);
 
   // ── Send message ────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const content = input.trim();
-    if (!content || sending) return;
+    const scope = scopeRef.current;
+    if (!content || !scope?.active || sendingRef.current) return;
 
+    sendingRef.current = true;
     setSending(true);
     setInput("");
     setError("");
 
     try {
-      const data = await messagesApi.send(channel.id, content);
-      // SSE will deliver the message; but add it optimistically too for instant feedback
-      setMsgList((prev) => {
-        if (prev.some((m) => m.id === data.message.id)) return prev;
-        return [...prev, data.message];
-      });
-      setTimeout(() => scrollToBottom("smooth"), 50);
+      const data = await messagesApi.send(channelId, content);
+      if (!scope.active) return;
+      setMsgList(scope.merge([data.message]));
+      setTimeout(() => { if (scope.active) scrollToBottom("smooth"); }, 50);
     } catch (e) {
-      setError(e.message);
-      setInput(content); // restore
+      if (scope.active) {
+        setError(e.message);
+        setInput((current) => current || content);
+      }
     } finally {
-      setSending(false);
-      textareaRef.current?.focus();
+      if (scope.active) {
+        sendingRef.current = false;
+        setSending(false);
+        textareaRef.current?.focus();
+      }
     }
-  }, [input, sending, channel?.id]);
+  }, [input, channelId, scrollToBottom]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -379,28 +375,29 @@ export default function TextPanel({ channel }) {
 
   const submitEdit = useCallback(async (messageId, content) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    const scope = scopeRef.current;
+    if (!trimmed || !scope?.active) return;
     try {
-      const data = await messagesApi.edit(channel.id, messageId, trimmed);
-      setMsgList((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, ...data.message } : m))
-      );
+      const data = await messagesApi.edit(channelId, messageId, trimmed);
+      if (scope.active) setMsgList(scope.applyEvent({ type: "message_edit", data: data.message }));
     } catch (e) {
-      setError(e.message);
+      if (scope.active) setError(e.message);
     } finally {
-      setEditingId(null);
+      if (scope.active) setEditingId((current) => current === messageId ? null : current);
     }
-  }, [channel?.id]);
+  }, [channelId]);
 
   // ── Delete ──────────────────────────────────────────────
   const handleDelete = useCallback(async (messageId) => {
+    const scope = scopeRef.current;
+    if (!scope?.active) return;
     try {
-      await messagesApi.delete(channel.id, messageId);
-      setMsgList((prev) => prev.filter((m) => m.id !== messageId));
+      await messagesApi.delete(channelId, messageId);
+      if (scope.active) setMsgList(scope.applyEvent({ type: "message_delete", data: { id: messageId } }));
     } catch (e) {
-      setError(e.message);
+      if (scope.active) setError(e.message);
     }
-  }, [channel?.id]);
+  }, [channelId]);
 
   // ── No channel ──────────────────────────────────────────
   if (!channel || channel.type !== "text") {

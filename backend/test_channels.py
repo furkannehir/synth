@@ -32,11 +32,11 @@ def give_permission(user_id, server_id, *perms):
         from app.models import role as role_model
         role_name = f"_test_{'_'.join(perms)}_{user_id[-4:]}"
         # Reuse existing test role if it already exists
-        existing = role_model.find_by_name(role_name)
+        existing = role_model.find_by_name(role_name, server_id)
         if existing:
             role_id = str(existing["_id"])
         else:
-            role_id = role_model.create(role_name, list(perms))
+            role_id = role_model.create(role_name, list(perms), server_id)
         role_model.assign_role(user_id, role_id, server_id)
     return role_id
 

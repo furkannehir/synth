@@ -17,7 +17,8 @@ flask-smorest==0.46.*
 marshmallow==4.*
 
 # LiveKit
-livekit-api==0.7.*
+livekit-api==1.2.1
+livekit-protocol==1.1.27
 
 # Production server
 gunicorn==23.*

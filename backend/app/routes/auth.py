@@ -28,7 +28,7 @@ blp = Blueprint(
 @blp.alt_response(409, description="Duplicate email or username")
 def register_route(data):
     try:
-        user = register(
+        result = register(
             username=data.get("username", "").strip(),
             email=data.get("email", "").strip(),
             password=data.get("password", ""),
@@ -36,9 +36,10 @@ def register_route(data):
     except AuthError as exc:
         return jsonify({"error": exc.message}), exc.status_code
 
-    token = create_access_token(identity=user["id"])
+    token = create_access_token(identity=result.user["id"],
+                                additional_claims={"session_version": result.session_version})
 
-    return jsonify({"user": user, "access_token": token}), 201
+    return jsonify({"user": result.user, "access_token": token}), 201
 
 
 # ── POST /api/auth/login ───────────────────────────────────
@@ -48,16 +49,17 @@ def register_route(data):
 @blp.alt_response(401, description="Invalid credentials")
 def login_route(data):
     try:
-        user = login(
+        result = login(
             email=data.get("email", "").strip(),
             password=data.get("password", ""),
         )
     except AuthError as exc:
         return jsonify({"error": exc.message}), exc.status_code
 
-    token = create_access_token(identity=user["id"])
+    token = create_access_token(identity=result.user["id"],
+                                additional_claims={"session_version": result.session_version})
 
-    return jsonify({"user": user, "access_token": token}), 200
+    return jsonify({"user": result.user, "access_token": token}), 200
 
 
 # ── GET /api/auth/me ────────────────────────────────────────

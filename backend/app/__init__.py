@@ -105,21 +105,18 @@ def create_app(config_name: str | None = None) -> Flask:
             message_indexes()
             friend_request_indexes()
             dm_indexes()
-
-            # Only seed defaults when the DB is empty (first boot)
-            if mongo.db.roles.count_documents({}, limit=1) == 0:
-                from app.models.role import seed_defaults as seed_roles
-                seed_roles()
-                app.logger.info("Seeded default roles.")
-            else:
-                # Ensure built-in roles stay in sync with code changes
-                from app.models.role import sync_default_roles
-                sync_default_roles()
+            from app.models.voice_session import ensure_indexes as voice_session_indexes
+            voice_session_indexes()
 
             if mongo.db.servers.count_documents({"is_default": True}, limit=1) == 0:
                 from app.models.server import seed_default as seed_server
                 seed_server()
                 app.logger.info("Seeded default server.")
+
+            # Role definitions, defaults, and assignments all belong to a server.
+            # Legacy global roles are never used by permission checks.
+            from app.models.role import migrate_legacy_roles
+            migrate_legacy_roles()
 
             from app.models.server import find_default as find_default_server
             from app.models.channel import seed_default_for_server
@@ -176,6 +173,23 @@ def create_app(config_name: str | None = None) -> Flask:
     invite_sweep_thread = threading.Thread(target=_invite_sweep, daemon=True)
     invite_sweep_thread.start()
 
+    def _server_cleanup_sweep():
+        from app.services.server_cleanup import sweep_deleted_servers
+        import time
+        error_logged = False
+        while True:
+            try:
+                with app.app_context():
+                    sweep_deleted_servers()
+                error_logged = False
+            except Exception:
+                if not error_logged:
+                    app.logger.exception("Server cleanup failed; retrying")
+                    error_logged = True
+            time.sleep(30)
+
+    threading.Thread(target=_server_cleanup_sweep, name="server-cleanup", daemon=True).start()
+
     # ── Presence cache refresher (background thread) ─────────
     def _presence_cache_refresh():
         """
@@ -184,7 +198,7 @@ def create_app(config_name: str | None = None) -> Flask:
         so DB load is O(unique_servers) not O(clients).
         """
         from app.extensions import presence_cache
-        from app.services.server_service import get_members, ServerError
+        from app.services.server_service import get_presence_members, ServerError
         import app.extensions as ext
 
         while True:
@@ -202,7 +216,7 @@ def create_app(config_name: str | None = None) -> Flask:
             for server_id in presence_cache.watched_server_ids():
                 try:
                     with app.app_context():
-                        members = get_members(server_id)
+                        members = get_presence_members(server_id)
                         
                         voice_channels = {}
                         if ext.media_server:
@@ -243,6 +257,14 @@ def create_app(config_name: str | None = None) -> Flask:
 
     cache_thread = threading.Thread(target=_presence_cache_refresh, daemon=True)
     cache_thread.start()
+
+    # Every worker follows the same Mongo-backed event histories and fans events
+    # out to its own SSE subscribers. Publishers need no process affinity.
+    from app.extensions import channel_event_bus, dm_event_bus
+    channel_event_bus.start(app)
+    dm_event_bus.start(app)
+    from app.voice_access import voice_access_guard
+    voice_access_guard.start(app)
 
     # ── Serve frontend SPA (production only) ────────────────
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static_frontend")

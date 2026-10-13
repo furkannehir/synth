@@ -11,9 +11,12 @@ with Flask's synchronous request cycle.
 from __future__ import annotations
 
 import asyncio
+import time
+from datetime import timedelta
 from typing import Optional
 
 from livekit import api as lk
+from aiohttp import ClientTimeout
 
 from app.ports.media_server import (
     MediaServerPort,
@@ -86,6 +89,7 @@ class LiveKitAdapter(MediaServerPort):
             self._http_url,
             api_key=self._api_key,
             api_secret=self._api_secret,
+            timeout=ClientTimeout(total=5),
         )
         try:
             return await callback(lkapi)
@@ -102,11 +106,13 @@ class LiveKitAdapter(MediaServerPort):
         *,
         can_publish: bool = True,
         can_subscribe: bool = True,
+        ttl_seconds: int = 60,
     ) -> str:
         token = (
             lk.AccessToken(self._api_key, self._api_secret)
             .with_identity(identity)
             .with_name(name or identity)
+            .with_ttl(timedelta(seconds=ttl_seconds))
             .with_grants(
                 lk.VideoGrants(
                     room_join=True,
@@ -144,7 +150,11 @@ class LiveKitAdapter(MediaServerPort):
         async def _delete(lkapi: lk.LiveKitAPI):
             await lkapi.room.delete_room(lk.DeleteRoomRequest(room=name))
 
-        self._run_async(self._room_op(_delete))
+        try:
+            self._run_async(self._room_op(_delete))
+        except lk.TwirpError as exc:
+            if exc.code != "not_found":
+                raise
 
     def list_rooms(self) -> list[RoomInfo]:
         async def _list(lkapi: lk.LiveKitAPI):
@@ -166,11 +176,18 @@ class LiveKitAdapter(MediaServerPort):
 
     def remove_participant(self, room_name: str, identity: str) -> None:
         async def _remove(lkapi: lk.LiveKitAPI):
+            # Cloud allows a cutoff within 60s of its clock. Cover in-flight
+            # refreshes and clock skew; a later join uses a different identity.
             await lkapi.room.remove_participant(
-                lk.RoomParticipantIdentity(room=room_name, identity=identity)
+                lk.RoomParticipantIdentity(room=room_name, identity=identity,
+                                            revoke_token_ts=int(time.time()) + 30)
             )
 
-        self._run_async(self._room_op(_remove))
+        try:
+            self._run_async(self._room_op(_remove))
+        except lk.TwirpError as exc:
+            if exc.code != "not_found":
+                raise
 
     def mute_participant(
         self,

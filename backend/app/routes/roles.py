@@ -1,10 +1,9 @@
-from flask import Blueprint as FlaskBlueprint, request, jsonify
+from flask import jsonify
 from flask_smorest import Blueprint
 
 from app.middleware.auth_middleware import auth_required, permission_required
 from app.services.role_service import RoleError
 from app.services import role_service
-from app.models import role as role_model
 from app.schemas import (
     CreateRoleSchema, UpdateRoleSchema, AssignRevokeSchema,
     RoleResponseSchema, RoleListSchema, PermissionListSchema,
@@ -26,7 +25,10 @@ BEARER = [{"BearerAuth": []}]
 @blp.response(200, RoleListSchema)
 @auth_required
 def list_roles(server_id, current_user=None):
-    roles = role_service.list_roles()
+    try:
+        roles = role_service.list_roles(server_id, str(current_user["_id"]))
+    except RoleError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"roles": roles}), 200
 
 
@@ -44,6 +46,7 @@ def create_role(data, server_id, current_user=None):
         role = role_service.create_role(
             name=data.get("name", "").strip(),
             permissions=data.get("permissions", []),
+            server_id=server_id,
             is_default=data.get("is_default", False),
         )
     except RoleError as exc:
@@ -57,7 +60,11 @@ def create_role(data, server_id, current_user=None):
 @blp.response(200, PermissionListSchema)
 @auth_required
 def list_permissions(server_id, current_user=None):
-    return jsonify({"permissions": role_model.ALL_PERMISSIONS}), 200
+    try:
+        permissions = role_service.list_permissions(server_id, str(current_user["_id"]))
+    except RoleError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    return jsonify({"permissions": permissions}), 200
 
 
 # ── POST /api/servers/<server_id>/roles/assign  —  assign role to user
@@ -108,7 +115,7 @@ def revoke_role(data, server_id, current_user=None):
 @auth_required
 def get_user_roles(server_id, user_id, current_user=None):
     try:
-        roles = role_service.get_user_roles(user_id, server_id)
+        roles = role_service.get_user_roles(user_id, server_id, str(current_user["_id"]))
     except RoleError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"roles": roles}), 200
@@ -122,7 +129,7 @@ def get_user_roles(server_id, user_id, current_user=None):
 @auth_required
 def get_role(server_id, role_id, current_user=None):
     try:
-        role = role_service.get_role(role_id)
+        role = role_service.get_role(role_id, server_id, str(current_user["_id"]))
     except RoleError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"role": role}), 200
@@ -138,7 +145,7 @@ def get_role(server_id, role_id, current_user=None):
 @permission_required("manage_roles")
 def update_role(data, server_id, role_id, current_user=None):
     try:
-        role = role_service.update_role(role_id, data)
+        role = role_service.update_role(role_id, server_id, data)
     except RoleError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"role": role}), 200
@@ -153,7 +160,7 @@ def update_role(data, server_id, role_id, current_user=None):
 @permission_required("manage_roles")
 def delete_role(server_id, role_id, current_user=None):
     try:
-        role_service.delete_role(role_id)
+        role_service.delete_role(role_id, server_id)
     except RoleError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"message": "Role deleted."}), 200

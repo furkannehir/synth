@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 from app.extensions import mongo
 
 
@@ -14,12 +15,14 @@ from app.extensions import mongo
 #   "created_at":       datetime,
 #   "edited_at":        datetime | None,
 #   "is_read":          bool,
+#   "read_receipt_id":  ObjectId,  # internal marker for an acknowledged batch
 # }
 # ────────────────────────────────────────────────────────────
 
 COLLECTION = "direct_messages"
 MAX_CONTENT_LENGTH = 2000
 PAGE_SIZE = 50
+MAX_READ_RECEIPT_IDS = 500
 
 
 def _col():
@@ -28,7 +31,9 @@ def _col():
 
 def ensure_indexes():
     """Create indexes (call once at app startup)."""
-    _col().create_index([("conversation_key", 1), ("created_at", -1)])
+    _col().create_index([("conversation_key", 1), ("created_at", -1), ("_id", -1)])
+    _col().create_index([("conversation_key", 1), ("read_receipt_id", 1)],
+                        partialFilterExpression={"read_receipt_id": {"$exists": True}})
     _col().create_index("sender_id")
     _col().create_index("recipient_id")
 
@@ -37,14 +42,19 @@ def ensure_indexes():
 
 def make_conversation_key(user_a: str, user_b: str) -> str:
     """Deterministic key for a conversation between two users."""
-    ids = sorted([str(user_a), str(user_b)])
+    ids = sorted([str(ObjectId(user_a)), str(ObjectId(user_b))])
     return f"{ids[0]}_{ids[1]}"
 
 
 # ── Queries ─────────────────────────────────────────────────
 
-def find_by_id(dm_id: str):
-    return _col().find_one({"_id": ObjectId(dm_id)})
+def find_by_id(dm_id: str, conversation_key: str | None = None):
+    if not ObjectId.is_valid(dm_id):
+        return None
+    query = {"_id": ObjectId(dm_id)}
+    if conversation_key is not None:
+        query["conversation_key"] = conversation_key
+    return _col().find_one(query)
 
 
 def find_by_conversation(
@@ -53,21 +63,25 @@ def find_by_conversation(
     limit: int = PAGE_SIZE,
 ) -> list:
     """
-    Return up to `limit` messages in a conversation, ordered newest-first.
+    Return up to `limit` messages from a conversation in chronological order.
     Pass `before` (a message _id string) for cursor-based pagination.
-    Returns in chronological order.
+    Timestamp ties are ordered by _id so page boundaries cannot skip messages.
     """
     query: dict = {"conversation_key": conversation_key}
 
-    if before:
-        pivot = _col().find_one({"_id": ObjectId(before)}, {"created_at": 1})
-        if pivot:
-            query["created_at"] = {"$lt": pivot["created_at"]}
+    if before is not None:
+        pivot = find_by_id(before, conversation_key)
+        if pivot is None:
+            raise ValueError("Pagination cursor not found in this conversation.")
+        query["$or"] = [
+            {"created_at": {"$lt": pivot["created_at"]}},
+            {"created_at": pivot["created_at"], "_id": {"$lt": pivot["_id"]}},
+        ]
 
     docs = list(
         _col()
         .find(query)
-        .sort("created_at", -1)
+        .sort([("created_at", -1), ("_id", -1)])
         .limit(limit)
     )
     docs.reverse()
@@ -82,7 +96,7 @@ def get_recent_conversations(user_id: str, offset: int = 0, limit: int = PAGE_SI
     user_oid = ObjectId(user_id)
     pipeline = [
         {"$match": {"$or": [{"sender_id": user_oid}, {"recipient_id": user_oid}]}},
-        {"$sort": {"created_at": -1}},
+        {"$sort": {"created_at": -1, "_id": -1}},
         {"$group": {
             "_id": "$conversation_key",
             "last_message": {"$first": "$$ROOT"},
@@ -92,7 +106,7 @@ def get_recent_conversations(user_id: str, offset: int = 0, limit: int = PAGE_SI
                 }
             }
         }},
-        {"$sort": {"last_message.created_at": -1}},
+        {"$sort": {"last_message.created_at": -1, "last_message._id": -1}},
         {"$skip": offset},
         {"$limit": limit}
     ]
@@ -121,32 +135,45 @@ def create(sender_id: str, recipient_id: str, content: str) -> str:
     return str(result.inserted_id)
 
 
-def update_content(dm_id: str, content: str):
-    _col().update_one(
-        {"_id": ObjectId(dm_id)},
+def update_content(dm_id: str, content: str, sender_id: str, conversation_key: str):
+    return _col().find_one_and_update(
+        {"_id": ObjectId(dm_id), "sender_id": ObjectId(sender_id),
+         "conversation_key": conversation_key},
         {"$set": {
             "content": content,
             "edited_at": datetime.now(timezone.utc),
         }},
+        return_document=ReturnDocument.AFTER,
     )
-    return find_by_id(dm_id)
 
 
-def delete(dm_id: str):
-    _col().delete_one({"_id": ObjectId(dm_id)})
+def delete(dm_id: str, sender_id: str, conversation_key: str) -> bool:
+    result = _col().delete_one({"_id": ObjectId(dm_id), "sender_id": ObjectId(sender_id),
+                               "conversation_key": conversation_key})
+    return result.deleted_count > 0
 
 
-def mark_read(conversation_key: str, recipient_id: str) -> int:
+def mark_read(conversation_key: str, recipient_id: str) -> dict:
     """Mark all unread messages addressed to the recipient in this conversation as read."""
+    receipt_id = ObjectId()
     res = _col().update_many(
         {
             "conversation_key": conversation_key,
             "recipient_id": ObjectId(recipient_id),
             "is_read": {"$ne": True}
         },
-        {"$set": {"is_read": True}}
+        {"$set": {"is_read": True, "read_receipt_id": receipt_id}}
     )
-    return res.modified_count
+    # A unique marker identifies the documents this update actually changed,
+    # even when new messages or other read requests race with the receipt.
+    if res.modified_count > MAX_READ_RECEIPT_IDS:
+        return {"count": res.modified_count, "message_ids": None}
+    ids = []
+    if res.modified_count:
+        ids = [str(doc["_id"]) for doc in _col().find(
+            {"conversation_key": conversation_key, "read_receipt_id": receipt_id}, {"_id": 1},
+        ).sort("_id", 1)]
+    return {"count": res.modified_count, "message_ids": ids}
 
 
 # ── Serialization ───────────────────────────────────────────

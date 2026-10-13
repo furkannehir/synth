@@ -45,6 +45,7 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "https://synthapp.io")
 
 
 class TestingConfig(Config):

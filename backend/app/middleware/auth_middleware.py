@@ -1,11 +1,30 @@
 from functools import wraps
+import time
 
+from bson import ObjectId
 from flask import jsonify, request
-from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
 
 from app.models import user as user_model
 from app.models import role as role_model
 from app.models import server as server_model
+
+
+class SessionError(Exception):
+    pass
+
+
+def ensure_session(user_id: str, claims: dict) -> dict:
+    """Check a verified JWT against current account state, also during SSE."""
+    version = claims.get("session_version", 0)  # pre-upgrade sessions are version 0
+    expires = claims.get("exp", 0)
+    if (not ObjectId.is_valid(user_id) or type(version) is not int
+            or type(expires) is not int or expires <= time.time()):
+        raise SessionError("Session expired. Please sign in again.")
+    user = user_model.find_by_id(user_id)
+    if user is None or user.get("session_version", 0) != version:
+        raise SessionError("Session expired. Please sign in again.")
+    return user
 
 
 def auth_required(fn):
@@ -29,9 +48,25 @@ def auth_required(fn):
 
         verify_jwt_in_request()
         user_id = get_jwt_identity()
-        user = user_model.find_by_id(user_id)
-        if user is None:
-            return jsonify({"error": "User not found."}), 401
+        try:
+            user = ensure_session(user_id, get_jwt())
+        except SessionError as exc:
+            return jsonify({"error": str(exc)}), 401
+        # Validate resource IDs before any view or permission check converts
+        # them, and use one spelling for comparisons and realtime topics.
+        # DMs retain their conversation-specific validation/error contract.
+        if request.blueprint != "dms":
+            resources = {
+                "server_id": "Server", "channel_id": "Channel",
+                "message_id": "Message", "role_id": "Role",
+                "user_id": "User", "friend_id": "User",
+                "request_id": "Friend request",
+            }
+            for parameter, resource in resources.items():
+                if parameter in kwargs:
+                    if not ObjectId.is_valid(kwargs[parameter]):
+                        return jsonify({"error": f"{resource} not found."}), 404
+                    kwargs[parameter] = str(ObjectId(kwargs[parameter]))
         kwargs["current_user"] = user
         return fn(*args, **kwargs)
     return wrapper
@@ -66,10 +101,16 @@ def permission_required(*permissions):
             if not server_id:
                 return jsonify({"error": "Server context required."}), 400
 
-            # Server owners bypass permission checks
+            if not ObjectId.is_valid(server_id):
+                return jsonify({"error": "Server not found."}), 404
             server = server_model.find_by_id(server_id)
-            if server and str(server.get("owner_id")) == user_id:
+            if server is None:
+                return jsonify({"error": "Server not found."}), 404
+            # Server owners bypass permission checks.
+            if str(server.get("owner_id")) == user_id:
                 return fn(*args, **kwargs)
+            if not server_model.is_member(server_id, user_id):
+                return jsonify({"error": "You must be a member of this server."}), 403
 
             user_perms = role_model.get_user_permissions(user_id, server_id)
 

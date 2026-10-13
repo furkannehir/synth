@@ -1,7 +1,6 @@
 from flask_pymongo import PyMongo
 from flask_jwt_extended import JWTManager
 import threading
-import queue
 
 # MongoDB instance — initialised in create_app()
 mongo = PyMongo()
@@ -69,6 +68,15 @@ class PresenceCache:
     def get(self, server_id: str):
         return self._cache.get(server_id)
 
+    def evict(self, server_id: str) -> None:
+        """Forget a deleted server's payload and wake its streams to recheck access."""
+        with self._lock:
+            self._cache.pop(server_id, None)
+            cond = self._conditions.get(server_id)
+            if cond:
+                with cond:
+                    cond.notify_all()
+
     # ── SSE generator helper ─────────────────────────────────
     def wait_for_update(self, server_id: str, timeout: float = REFRESH_INTERVAL + 1):
         """Block until new data is available for server_id or timeout expires."""
@@ -121,71 +129,7 @@ class PresenceCache:
 presence_cache = PresenceCache()
 
 
-class ChannelEventBus:
-    """
-    Thread-safe pub/sub bus for text-channel SSE streams.
-    Uses individual queues for each subscriber so multiple users
-    can listen to the same channel without consuming events meant for others.
-    """
-
-    def __init__(self):
-        self._listeners: dict[str, list[queue.Queue]] = {}
-        self._lock = threading.Lock()
-
-    def subscribe(self, channel_id: str) -> queue.Queue:
-        q = queue.Queue()
-        with self._lock:
-            if channel_id not in self._listeners:
-                self._listeners[channel_id] = []
-            self._listeners[channel_id].append(q)
-        return q
-
-    def unsubscribe(self, channel_id: str, q: queue.Queue) -> None:
-        with self._lock:
-            if channel_id in self._listeners:
-                try:
-                    self._listeners[channel_id].remove(q)
-                except ValueError:
-                    pass
-
-    def publish(self, channel_id: str, event: dict) -> None:
-        with self._lock:
-            listeners = self._listeners.get(channel_id, [])
-            for q in listeners:
-                q.put(event)
+from app.realtime import ChannelEventBus, DMEventBus
 
 channel_event_bus = ChannelEventBus()
-
-
-class DMEventBus:
-    """
-    Thread-safe pub/sub bus for DM SSE streams.
-    """
-
-    def __init__(self):
-        self._listeners: dict[str, list[queue.Queue]] = {}
-        self._lock = threading.Lock()
-
-    def subscribe(self, conversation_key: str) -> queue.Queue:
-        q = queue.Queue()
-        with self._lock:
-            if conversation_key not in self._listeners:
-                self._listeners[conversation_key] = []
-            self._listeners[conversation_key].append(q)
-        return q
-
-    def unsubscribe(self, conversation_key: str, q: queue.Queue) -> None:
-        with self._lock:
-            if conversation_key in self._listeners:
-                try:
-                    self._listeners[conversation_key].remove(q)
-                except ValueError:
-                    pass
-
-    def publish(self, conversation_key: str, event: dict) -> None:
-        with self._lock:
-            listeners = self._listeners.get(conversation_key, [])
-            for q in listeners:
-                q.put(event)
-
 dm_event_bus = DMEventBus()

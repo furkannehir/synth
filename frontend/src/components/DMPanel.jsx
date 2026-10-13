@@ -1,3 +1,5 @@
+import { connectChatStream } from "../api/chatStream";
+import { applyDMEvent, mergeDMMessages } from "../api/dmMessages";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { dms as dmsApi, friends as friendsApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -246,7 +248,8 @@ export default function DMPanel({ friend, onFriendRemoved }) {
   const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
-  const eventSourceRef = useRef(null);
+  const messageVersionRef = useRef(0);
+  const deletedMessageIdsRef = useRef(new Set());
 
   const currentUserId = user?.id || user?._id;
 
@@ -264,19 +267,6 @@ export default function DMPanel({ friend, onFriendRemoved }) {
     setError("");
     setEditingId(null);
     setInput("");
-
-    dmsApi
-      .list(friend.id)
-      .then((data) => {
-        const fetched = data.messages || [];
-        setMsgList(fetched);
-        setHasMore(fetched.length === 50);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-
-    // Mark messages as read when opening DM
-    dmsApi.markRead(friend.id).catch(() => {});
   }, [friend?.id]);
 
   // ── Scroll to bottom on initial load ───────────────────
@@ -288,21 +278,28 @@ export default function DMPanel({ friend, onFriendRemoved }) {
   useEffect(() => {
     if (!friend) return;
 
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    const es = new EventSource(dmsApi.eventsUrl(friend.id));
-    eventSourceRef.current = es;
-
-    es.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
+    const disconnect = connectChatStream({
+      url: dmsApi.eventsUrl(friend.id),
+      loadHistory: () => dmsApi.list(friend.id),
+      onHistory: (data) => {
+        const fetched = data.messages || [];
+        messageVersionRef.current += 1;
+        setMsgList(fetched);
+        setHasMore(fetched.length === 50);
+        setLoading(false);
+        setError("");
+        // Reconnecting may load incoming messages missed while offline.
+        dmsApi.markRead(friend.id).catch(() => {});
+      },
+      onError: (error) => {
+        setError(error.message);
+        setLoading(false);
+      },
+      onEvent: (event) => {
+        messageVersionRef.current += 1;
+        if (event.type === "dm_delete") deletedMessageIdsRef.current.add(event.data.id);
+        setMsgList((prev) => applyDMEvent(prev, event, currentUserId));
         if (event.type === "dm") {
-          setMsgList((prev) => {
-            if (prev.some((m) => m.id === event.data.id)) return prev;
-            return [...prev, event.data];
-          });
           
           if (event.data.sender_id !== currentUserId) {
             dmsApi.markRead(friend.id).catch(() => {});
@@ -313,30 +310,11 @@ export default function DMPanel({ friend, onFriendRemoved }) {
             const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
             if (nearBottom) setTimeout(() => scrollToBottom("smooth"), 50);
           }
-        } else if (event.type === "dm_edit") {
-          setMsgList((prev) =>
-            prev.map((m) => (m.id === event.data.id ? { ...m, ...event.data } : m))
-          );
-        } else if (event.type === "dm_delete") {
-          setMsgList((prev) => prev.filter((m) => m.id !== event.data.id));
-        } else if (event.type === "dm_read") {
-          if (event.data.by !== currentUserId) {
-            setMsgList((prev) =>
-              prev.map((m) => (m.sender_id === currentUserId ? { ...m, is_read: true } : m))
-            );
-          }
         }
-      } catch {
-        // malformed SSE data
-      }
-    };
+      },
+    });
 
-    es.onerror = () => {};
-
-    return () => {
-      es.close();
-      eventSourceRef.current = null;
-    };
+    return disconnect;
   }, [friend?.id]);
 
   // ── Load older messages ─────────────────────────────────
@@ -349,11 +327,14 @@ export default function DMPanel({ friend, onFriendRemoved }) {
 
     setLoadingMore(true);
     const prevHeight = el.scrollHeight;
+    const messageVersion = messageVersionRef.current;
 
     try {
       const data = await dmsApi.list(friend.id, oldest.id);
+      // A newer snapshot or streamed update makes this page's snapshot stale.
+      if (messageVersionRef.current !== messageVersion) return;
       const older = data.messages || [];
-      setMsgList((prev) => [...older, ...prev]);
+      setMsgList((prev) => mergeDMMessages(prev, older));
       setHasMore(older.length === 50);
       requestAnimationFrame(() => {
         el.scrollTop = el.scrollHeight - prevHeight;
@@ -376,10 +357,9 @@ export default function DMPanel({ friend, onFriendRemoved }) {
 
     try {
       const data = await dmsApi.send(friend.id, content);
-      setMsgList((prev) => {
-        if (prev.some((m) => m.id === data.message.id)) return prev;
-        return [...prev, data.message];
-      });
+      if (deletedMessageIdsRef.current.has(data.message.id)) return;
+      messageVersionRef.current += 1;
+      setMsgList((prev) => mergeDMMessages(prev, [data.message]));
       setTimeout(() => scrollToBottom("smooth"), 50);
     } catch (e) {
       setError(e.message);
@@ -406,9 +386,8 @@ export default function DMPanel({ friend, onFriendRemoved }) {
     if (!trimmed) return;
     try {
       const data = await dmsApi.edit(friend.id, messageId, trimmed);
-      setMsgList((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, ...data.message } : m))
-      );
+      messageVersionRef.current += 1;
+      setMsgList((prev) => applyDMEvent(prev, { type: "dm_edit", data: data.message }, currentUserId));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -420,6 +399,8 @@ export default function DMPanel({ friend, onFriendRemoved }) {
   const handleDelete = useCallback(async (messageId) => {
     try {
       await dmsApi.delete(friend.id, messageId);
+      deletedMessageIdsRef.current.add(messageId);
+      messageVersionRef.current += 1;
       setMsgList((prev) => prev.filter((m) => m.id !== messageId));
     } catch (e) {
       setError(e.message);

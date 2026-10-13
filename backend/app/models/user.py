@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pymongo import ReturnDocument
 
 from app.extensions import mongo
 
@@ -35,6 +36,8 @@ def ensure_indexes():
 
 def find_by_id(user_id):
     from bson import ObjectId
+    if not ObjectId.is_valid(user_id):
+        return None
     return get_collection().find_one({"_id": ObjectId(user_id)})
 
 
@@ -52,6 +55,7 @@ def create(username: str, email: str, password_hash: str) -> str:
         "username": username,
         "email": email.lower(),
         "password_hash": password_hash,
+        "session_version": 0,
         "avatar": None,
         "is_online": False,
         "last_seen": datetime.now(timezone.utc),
@@ -93,16 +97,32 @@ def find_by_reset_token(token_hash: str):
     })
 
 
-def update_password_and_clear_token(user_id: str, new_password_hash: str) -> None:
-    """Set a new password hash and remove the reset token fields."""
+def update_password_and_clear_token(user_id: str, new_password_hash: str, token_hash: str) -> bool:
+    """Consume a still-valid reset token and revoke earlier sessions atomically."""
     from bson import ObjectId
-    get_collection().update_one(
-        {"_id": ObjectId(user_id)},
+    result = get_collection().update_one(
+        {"_id": ObjectId(user_id), "reset_token_hash": token_hash,
+         "reset_token_expires": {"$gt": datetime.now(timezone.utc)}},
         {
-            "$set": {"password_hash": new_password_hash},
+            "$set": {"password_hash": new_password_hash, "is_online": False},
+            "$inc": {"session_version": 1},
             "$unset": {"reset_token_hash": "", "reset_token_expires": ""},
         },
     )
+    return result.matched_count > 0
+
+
+def mark_authenticated_login(user: dict) -> dict | None:
+    """Do not complete a login whose checked credentials changed meanwhile."""
+    query = {"_id": user["_id"], "password_hash": user["password_hash"]}
+    version = user.get("session_version", 0)
+    if version == 0:
+        query["$or"] = [{"session_version": 0}, {"session_version": {"$exists": False}}]
+    else:
+        query["session_version"] = version
+    return get_collection().find_one_and_update(query, {"$set": {
+        "is_online": True, "last_seen": datetime.now(timezone.utc),
+    }}, return_document=ReturnDocument.AFTER)
 
 
 # ── Friend management ───────────────────────────────────────
@@ -155,6 +175,17 @@ def get_friends(user_id: str) -> list:
     if not friend_ids:
         return []
     return list(get_collection().find({"_id": {"$in": friend_ids}}))
+
+
+def to_public_dict(user: dict) -> dict:
+    """Public presence/profile fields; never expose account or social data."""
+    return {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "avatar": user.get("avatar"),
+        "is_online": user.get("is_online", False),
+        "last_seen": user["last_seen"].isoformat() if user.get("last_seen") else None,
+    }
 
 
 def to_dict(user: dict, include_roles: bool = True, server_id: str | None = None) -> dict:

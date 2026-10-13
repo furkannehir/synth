@@ -15,6 +15,10 @@ class InviteError(Exception):
 def create_invite(server_id: str, user_id: str,
                   max_uses: int = 0,
                   expires_in_hours: int | None = None) -> dict:
+    if type(max_uses) is not int or not 0 <= max_uses <= 2**63 - 1:
+        raise InviteError("Max uses must be a nonnegative integer.")
+    if expires_in_hours is not None and (type(expires_in_hours) is not int or expires_in_hours < 0):
+        raise InviteError("Invite expiry must be a nonnegative number of hours.")
     server = server_model.find_by_id(server_id)
     if server is None:
         raise InviteError("Server not found.", 404)
@@ -25,7 +29,10 @@ def create_invite(server_id: str, user_id: str,
     expires_at = None
     if expires_in_hours and expires_in_hours > 0:
         from datetime import timedelta
-        expires_at = now + timedelta(hours=expires_in_hours)
+        try:
+            expires_at = now + timedelta(hours=expires_in_hours)
+        except OverflowError:
+            raise InviteError("Invite expiry is too far in the future.")
 
     # Keep only one active invite per creator/server by expiring prior active links.
     existing_invites = invite_model.find_by_server_and_creator(server_id, user_id)
@@ -34,6 +41,9 @@ def create_invite(server_id: str, user_id: str,
             invite_model.expire_by_code(existing["code"], now)
 
     invite = invite_model.create(server_id, user_id, max_uses, expires_at)
+    if server_model.find_by_id(server_id) is None:
+        invite_model.delete_by_code(invite["code"])
+        raise InviteError("Server no longer exists.", 404)
     return invite_model.to_dict(invite)
 
 
@@ -48,10 +58,11 @@ def get_invite(code: str) -> dict:
 
     result = invite_model.to_dict(invite)
     server = server_model.find_by_id(str(invite["server_id"]))
-    if server:
-        result["server_name"] = server["name"]
-        result["server_icon"] = server.get("icon")
-        result["member_count"] = len(server.get("members", []))
+    if server is None:
+        raise InviteError("Server no longer exists.", 404)
+    result["server_name"] = server["name"]
+    result["server_icon"] = server.get("icon")
+    result["member_count"] = len(server.get("members", []))
     return result
 
 
@@ -72,16 +83,39 @@ def accept_invite(code: str, user_id: str) -> dict:
     if server_model.is_member(server_id, user_id):
         raise InviteError("You are already a member of this server.", 409)
 
-    server_model.add_member(server_id, user_id)
+    claimed = invite_model.claim_use(invite["_id"], _utc_now())
+    if claimed is None:
+        current = invite_model.find_by_code(code)
+        if current is None:
+            raise InviteError("Invite not found or invalid.", 404)
+        _check_expired(current)
+        _check_used(current)
+        raise InviteError("Invite is no longer available.", 410)
+
+    try:
+        added = server_model.add_member(server_id, user_id)
+    except Exception:
+        # A failed database response may still have committed membership. Keep
+        # the use spent so a retry cannot oversubscribe the invite.
+        invite_model.finish_use(invite["_id"])
+        raise
+    if not added:
+        invite_model.finish_use(invite["_id"], refund=True)
+        if server_model.find_by_id(server_id) is None:
+            raise InviteError("Server no longer exists.", 404)
+        raise InviteError("You are already a member of this server.", 409)
+    invite_model.finish_use(invite["_id"])
 
     # Assign default "member" role scoped to this server
-    default_role = role_model.get_default_role()
+    default_role = role_model.get_default_role(server_id)
     if default_role:
         role_model.assign_role(user_id, str(default_role["_id"]), server_id)
 
-    invite_model.increment_uses(code)
-
-    return server_model.to_dict(server_model.find_by_id(server_id))
+    server = server_model.find_by_id(server_id)
+    if server is None:
+        role_model.remove_all_for_user_in_server(user_id, server_id)
+        raise InviteError("Server no longer exists.", 404)
+    return server_model.to_dict(server)
 
 
 def list_server_invites(server_id: str, user_id: str) -> list[dict]:
@@ -150,7 +184,7 @@ def _is_invite_expired(invite: dict, now: datetime | None = None) -> bool:
 def _is_invite_exhausted(invite: dict) -> bool:
     max_uses = int(invite.get("max_uses", 0) or 0)
     uses = int(invite.get("uses", 0) or 0)
-    return max_uses > 0 and uses >= max_uses
+    return max_uses < 0 or (max_uses > 0 and uses >= max_uses)
 
 
 def _is_invite_active(invite: dict, now: datetime | None = None) -> bool:

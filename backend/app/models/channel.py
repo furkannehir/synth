@@ -50,6 +50,8 @@ def seed_default_for_server(server_id: str):
 # ── Queries ─────────────────────────────────────────────────
 
 def find_by_id(channel_id: str):
+    if not ObjectId.is_valid(channel_id):
+        return None
     return _col().find_one({"_id": ObjectId(channel_id)})
 
 

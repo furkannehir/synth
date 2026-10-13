@@ -1,8 +1,9 @@
 from flask import request, jsonify, Response, stream_with_context, current_app
 from flask_smorest import Blueprint
+from flask_jwt_extended import get_jwt
 import json
 
-from app.middleware.auth_middleware import auth_required, permission_required
+from app.middleware.auth_middleware import auth_required, permission_required, ensure_session, SessionError
 from app.services.server_service import ServerError
 from app.services import server_service
 from app.services.invite_service import InviteError
@@ -138,11 +139,12 @@ def leave_server(server_id, current_user=None):
 @blp.route("/<server_id>/members", methods=["GET"])
 @blp.doc(security=BEARER)
 @blp.response(200, MemberListSchema)
+@blp.alt_response(403, description="Not a server member")
 @blp.alt_response(404, description="Server not found")
 @auth_required
 def get_members(server_id, current_user=None):
     try:
-        members = server_service.get_members(server_id)
+        members = server_service.get_members(server_id, str(current_user["_id"]))
     except ServerError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"members": members}), 200
@@ -201,11 +203,11 @@ def stream_members(server_id, current_user=None):
     N clients watching the same server cost O(1) DB queries per cycle.
     """
     from app.extensions import presence_cache
-    from app.services.server_service import get_members
-
-    # Verify the server exists (reuse existing route logic)
+    user_id = str(current_user["_id"])
+    claims = get_jwt().copy()
+    # Authorize before reading or registering for any cached presence data.
     try:
-        initial_members = get_members(server_id)
+        initial_members = server_service.get_members(server_id, user_id)
     except ServerError as exc:
         return jsonify({"error": exc.message}), exc.status_code
 
@@ -216,30 +218,39 @@ def stream_members(server_id, current_user=None):
 
     def generate():
         last_payload = None
-        try:
-            # --- First frame: send immediately without waiting ---
-            cached_data = presence_cache.get(server_id)
+        member_schema = MemberListSchema()
+
+        def public_payload(cached_data):
             if not isinstance(cached_data, dict):
                 cached_data = {"members": cached_data or initial_members, "voice_channels": {}}
-                
-            payload = json.dumps(cached_data)
+            return {
+                "members": member_schema.dump({"members": cached_data.get("members", [])})["members"],
+                "voice_channels": cached_data.get("voice_channels", {}),
+            }
+
+        try:
+            # --- First frame: send immediately without waiting ---
+            ensure_session(user_id, claims)
+            server_service.require_member(server_id, user_id)
+            payload = json.dumps(public_payload(presence_cache.get(server_id)))
             last_payload = payload
             yield f"data: {payload}\n\n"
 
             # --- Subsequent frames: wake on cache update ---
             while True:
                 presence_cache.wait_for_update(server_id)
+                ensure_session(user_id, claims)
+                server_service.require_member(server_id, user_id)
                 cached_data = presence_cache.get(server_id)
                 if cached_data is None:
                     continue
-                if not isinstance(cached_data, dict):
-                    cached_data = {"members": cached_data, "voice_channels": {}}
-                    
-                payload = json.dumps(cached_data)
+                payload = json.dumps(public_payload(cached_data))
                 if payload != last_payload:          # send only when changed
                     last_payload = payload
                     yield f"data: {payload}\n\n"
-        except GeneratorExit:
+                else:
+                    yield ": heartbeat\n\n"
+        except (GeneratorExit, ServerError, SessionError):
             pass  # client disconnected
         finally:
             presence_cache.unregister(server_id)

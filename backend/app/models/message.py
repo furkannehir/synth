@@ -8,6 +8,7 @@ from app.extensions import mongo
 # messages {
 #   "_id":         ObjectId,
 #   "channel_id":  ObjectId,
+#   "server_id":   ObjectId,  # retained for cleanup if the channel is removed
 #   "author_id":   ObjectId,
 #   "content":     str  (max 2000 chars),
 #   "created_at":  datetime,
@@ -26,32 +27,40 @@ def _col():
 
 def ensure_indexes():
     # Primary query: history for a channel, newest first
-    _col().create_index([("channel_id", 1), ("created_at", -1)])
+    _col().create_index([("channel_id", 1), ("created_at", -1), ("_id", -1)])
+    _col().create_index("server_id")
 
 
 # ── Queries ─────────────────────────────────────────────────
 
 def find_by_id(message_id: str):
+    if not ObjectId.is_valid(message_id):
+        return None
     return _col().find_one({"_id": ObjectId(message_id)})
 
 
 def find_by_channel(channel_id: str, before: str | None = None, limit: int = PAGE_SIZE) -> list:
     """
-    Return up to `limit` messages in a channel, ordered newest-first.
-    Pass `before` (a message _id string) for cursor-based pagination —
-    only messages created before that message are returned.
+    Return up to `limit` messages from a channel in chronological order.
+    A cursor belongs to this channel. Timestamp ties are ordered by _id
+    so a page boundary cannot skip messages created in the same millisecond.
     """
     query: dict = {"channel_id": ObjectId(channel_id)}
 
-    if before:
-        pivot = _col().find_one({"_id": ObjectId(before)}, {"created_at": 1})
-        if pivot:
-            query["created_at"] = {"$lt": pivot["created_at"]}
+    if before is not None:
+        pivot = _col().find_one({"_id": ObjectId(before), "channel_id": query["channel_id"]},
+                               {"created_at": 1})
+        if pivot is None:
+            raise ValueError("Pagination cursor not found in this channel.")
+        query["$or"] = [
+            {"created_at": {"$lt": pivot["created_at"]}},
+            {"created_at": pivot["created_at"], "_id": {"$lt": pivot["_id"]}},
+        ]
 
     docs = list(
         _col()
         .find(query)
-        .sort("created_at", -1)
+        .sort([("created_at", -1), ("_id", -1)])
         .limit(limit)
     )
     # Return in chronological order for the frontend
@@ -65,9 +74,16 @@ def count_by_channel(channel_id: str) -> int:
 
 # ── Mutations ───────────────────────────────────────────────
 
-def create(channel_id: str, author_id: str, content: str) -> str:
+def create(channel_id: str, author_id: str, content: str, server_id: str | None = None) -> str:
+    if server_id is None:
+        from app.models import channel as channel_model
+        channel = channel_model.find_by_id(channel_id)
+        server_oid = channel["server_id"] if channel else None
+    else:
+        server_oid = ObjectId(server_id)
     result = _col().insert_one({
         "channel_id": ObjectId(channel_id),
+        "server_id": server_oid,
         "author_id":  ObjectId(author_id),
         "content":    content,
         "created_at": datetime.now(timezone.utc),

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { usePresence } from "../hooks/usePresence";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelList from "../components/ChannelList";
 import VoicePanel from "../components/VoicePanel";
@@ -29,8 +28,6 @@ export default function HomePage() {
 
     return window.localStorage.getItem(DESKTOP_PROMPT_DISMISSED_KEY) !== "1";
   });
-
-  usePresence(!!user);
 
   const handleServerSelect = (server) => {
     setActiveServer(server);
@@ -85,9 +82,7 @@ export default function HomePage() {
   };
 
   const handleFriendRemoved = (friendId) => {
-    if (activeFriend?.id === friendId) {
-      setActiveFriend(null);
-    }
+    setActiveFriend((selected) => selected?.id === friendId ? null : selected);
   };
 
   // Home mode: no server selected — show friends & DMs
@@ -134,6 +129,7 @@ export default function HomePage() {
           />
           <div className="flex-1 overflow-hidden relative flex">
             <DMPanel
+              key={`${user?.id}:${activeFriend?.id || "none"}`}
               friend={activeFriend}
               onFriendRemoved={handleFriendRemoved}
             />
