@@ -11,9 +11,14 @@ export default function Modal({ title, id, onClose, className = "", children }) 
     const dialog = dialogRef.current;
     (dialog.querySelector("input:checked:not([disabled])") || dialog.querySelector("input:not([disabled]), select:not([disabled])") || dialog.querySelector("button:not([disabled])"))?.focus();
     const onKey = (event) => {
-      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (document.fullscreenElement) { void document.exitFullscreen().catch(() => {}); return; }
+        closeRef.current();
+      }
       if (event.key !== "Tab") return;
-      const controls = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]')];
+      const scope = document.fullscreenElement && dialog.contains(document.fullscreenElement) ? document.fullscreenElement : dialog;
+      const controls = [...scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]')];
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalParticipant } from "@livekit/components-react";
 import { Room, Track, createLocalVideoTrack } from "livekit-client";
 import Modal from "./Modal";
+import FullscreenVideo from "./FullscreenVideo";
 
 function cameraError(error) {
   if (error.name === "NotAllowedError") return "Camera access was blocked. Allow camera access, then retry.";
@@ -116,8 +117,8 @@ export default function CameraPreviewModal({ onPublished, onCancel }) {
   const selectedDevice = deviceId || preview.deviceId;
   const listedSelection = devices.some((device) => device.deviceId === selectedDevice);
   return (
-    <Modal title="Camera preview" id="camera-preview-title" className="camera-preview-modal" onClose={onCancel}>
-      <div className="camera-preview-source">
+    <Modal title="Camera preview" id="camera-preview-title" className="media-preview-modal camera-preview-modal" onClose={onCancel}>
+      <div className="media-preview-source">
         <p>Check your appearance before publishing to the room.</p>
         <label>Video source
           <select value={selectedDevice} disabled={publishing || devices.length === 0} onChange={(event) => restartPreview(event.target.value)}>
@@ -127,12 +128,12 @@ export default function CameraPreviewModal({ onPublished, onCancel }) {
         </label>
         {deviceWarning && <p role="status">{deviceWarning}</p>}
       </div>
-      <div className={`camera-preview-media ${preview.ready ? "" : "is-pending"}`}>
+      <FullscreenVideo className={`media-preview-media ${preview.ready ? "" : "is-pending"}`} label="camera preview" disabled={!preview.ready}>
         <video ref={videoRef} autoPlay muted playsInline aria-label="Camera preview" data-lk-local-video="true" />
-        {preview.loading && <p className="camera-preview-status" role="status">Starting camera…</p>}
-        {preview.error && <div className="camera-preview-status"><p role="alert">{preview.error}</p><button onClick={() => restartPreview()} disabled={publishing}>Retry</button></div>}
-      </div>
-      <footer className="camera-preview-footer">
+        {preview.loading && <p className="media-preview-status" role="status">Starting camera…</p>}
+        {preview.error && <div className="media-preview-status"><p role="alert">{preview.error}</p><button onClick={() => restartPreview()} disabled={publishing}>Retry</button></div>}
+      </FullscreenVideo>
+      <footer className="media-preview-footer">
         {publishError && <p role="alert" className="form-error">{publishError}</p>}
         <div><button onClick={onCancel}>Cancel</button><button className="primary-button" onClick={publish} disabled={!preview.ready || publishing || !localParticipant}>{publishing ? "Publishing…" : "Publish camera"}</button></div>
       </footer>

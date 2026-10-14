@@ -1,9 +1,11 @@
+#[cfg(windows)]
+pub mod native_capture;
 mod session_store;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -37,11 +39,29 @@ pub fn run() {
             }
             Ok(())
         })
-        .manage(session_store::SessionStore::default())
+        .manage(session_store::SessionStore::default());
+    #[cfg(windows)]
+    let builder = builder
+        .manage(native_capture::CaptureState::default())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                window.state::<native_capture::CaptureState>().stop_all();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             session_store::read_desktop_session,
-            session_store::write_desktop_session
-        ])
+            session_store::write_desktop_session,
+            native_capture::native_capture_list_sources,
+            native_capture::native_capture_start,
+            native_capture::native_capture_frame,
+            native_capture::native_capture_stop
+        ]);
+    #[cfg(not(windows))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        session_store::read_desktop_session,
+        session_store::write_desktop_session
+    ]);
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

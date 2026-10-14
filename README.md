@@ -1,6 +1,6 @@
 # SYNTH
 
-A real-time voice channel web application inspired by Discord, built with a cyberpunk aesthetic. Create servers, join voice channels, and talk with others — all in the browser.
+A real-time chat and voice application inspired by Discord, available in the browser and desktop app. Create servers, join voice channels, and talk with others.
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.1-green)
@@ -15,12 +15,13 @@ https://synthapp.io/
 ## Features
 
 - **Voice Channels** — Real-time voice chat powered by LiveKit (WebRTC)
+- **Camera & Screen Sharing** — Camera selection, Windows window/monitor previews, and fullscreen video. Windows screen capture supports video at up to 720p and 15 fps.
 - **Servers & Channels** — Create and manage servers with multiple voice channels
 - **Role-Based Access Control** — Server-scoped roles with granular permissions
 - **User Presence** — Live online/offline status tracking
 - **JWT Authentication** — Secure token-based auth with bcrypt password hashing
 - **Swagger API Docs** — Interactive API documentation at `/docs`
-- **Cyberpunk UI** — Animated neon theme with glassmorphism, waveform visualizations, and glow effects
+- **Appearance** — Dusk, Daylight, and Midnight themes with a saved preference
 
 ## Tech Stack
 

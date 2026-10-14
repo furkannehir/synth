@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Video, Monitor, Hash, Volume2, Plus, Copy, RefreshCw, X, Play, UserPlus } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Video, Monitor, Hash, Volume2, Plus, Copy, RefreshCw, X, Play, UserPlus, LoaderCircle } from "lucide-react";
 import Avatar from "./Avatar";
 import { channels as channelsApi, invites as invitesApi } from "../api/client";
 import { useServerPresence } from "../context/ServerPresenceContext";
@@ -90,7 +90,7 @@ const isCachedInviteExpired = (cachedInvite) => {
   return false;
 };
 
-export default function ChannelList({ server, activeChannel, onSelect, onChannelsLoaded }) {
+export default function ChannelList({ server, activeChannel, onSelect, onJoin, onChannelsLoaded }) {
   const { voiceChannels } = useServerPresence();
 
   const [channelList, setChannelList] = useState([]);
@@ -403,6 +403,7 @@ export default function ChannelList({ server, activeChannel, onSelect, onChannel
                   channel={ch}
                   active={activeChannel?.id === ch.id}
                   onSelect={onSelect}
+                  onJoin={onJoin}
                   participants={voiceChannels[ch.id] || []}
                 />
               ))}
@@ -413,8 +414,10 @@ export default function ChannelList({ server, activeChannel, onSelect, onChannel
   );
 }
 
-function ChannelItem({ channel, active, onSelect, participants = [] }) {
+function ChannelItem({ channel, active, onSelect, onJoin, participants = [] }) {
   const { members } = useServerPresence();
+  const [joining, setJoining] = useState(false);
+  const joiningRef = useRef(false);
   const isVoice = channel.type === "voice";
 
   return (
@@ -434,17 +437,25 @@ function ChannelItem({ channel, active, onSelect, participants = [] }) {
           {channel.user_limit > 0 && (
             <span className="text-[9px] text-cyber-muted/50 tabular-nums">{channel.user_limit}</span>
           )}
-          {isVoice && !active && (
+          {isVoice && onJoin && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onSelect(channel); }}
+              onClick={async (event) => {
+                event.stopPropagation();
+                if (joiningRef.current) return;
+                joiningRef.current = true; setJoining(true);
+                try { await onJoin(channel); }
+                finally { joiningRef.current = false; setJoining(false); }
+              }}
+              disabled={joining}
+              aria-label={`Join ${channel.name}`}
               title="Join voice channel"
-              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center
+              className="channel-join-button w-7 h-7 rounded flex items-center justify-center
                          text-[10px] text-neon-green/70 bg-neon-green/10 border border-neon-green/20
                          hover:bg-neon-green/20 hover:text-neon-green hover:border-neon-green/40
                          transition-all cursor-pointer"
             >
-              <Play size={13} />
+              {joining ? <LoaderCircle size={15} className="animate-spin" /> : <Play size={15} />}
             </button>
           )}
         </div>

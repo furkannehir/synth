@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "synth",
-  "version": "1.2.2",
+  "version": "1.3.2",
   "identifier": "com.synth.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "Synth",
-        "width": 800,
-        "height": 600,
+        "width": 1280,
+        "height": 800,
+        "center": true,
+        "preventOverflow": true,
         "resizable": true,
         "fullscreen": false
       }
@@ -36,7 +38,13 @@
     ]
   },
   "plugins": {
-    "deep-link": { "desktop": { "schemes": ["synthapp"] } },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "synthapp"
+        ]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/furkannehir/synth/releases/latest/download/latest.json"

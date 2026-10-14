@@ -1,7 +1,9 @@
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useRef } from "react";
-import { AudioLines, Maximize2, Mic, MicOff, Monitor, PhoneOff, Video, VideoOff, Volume2, X } from "lucide-react";
+import { AudioLines, LoaderCircle, Maximize2, Mic, MicOff, Monitor, PhoneOff, Video, VideoOff, Volume2, X } from "lucide-react";
 import Avatar from "./Avatar";
 import CameraPreviewModal from "./CameraPreviewModal";
+import ScreenSharePreviewModal from "./ScreenSharePreviewModal";
+import FullscreenVideo from "./FullscreenVideo";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -13,6 +15,7 @@ import {
 import { Track } from "livekit-client";
 import { voice as voiceApi } from "../api/client";
 import { useServerPresence } from "../context/ServerPresenceContext";
+import { isTauriRuntime } from "../utils/runtime";
 
 const VoicePanel = forwardRef(function VoicePanel({ activeChannel, onNavigate }, ref) {
   const [token, setToken] = useState(null);
@@ -200,12 +203,22 @@ export default VoicePanel;
 
 function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart }) {
   const participants = useParticipants();
-  const { localParticipant } = useLocalParticipant();
+  const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
-  const [screenShareOn, setScreenShareOn] = useState(false);
+  const screenShareOn = !!isScreenShareEnabled;
   const [showCamPreview, setShowCamPreview] = useState(false);
+  const [showScreenPreview, setShowScreenPreview] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [screenShareError, setScreenShareError] = useState("");
+  const [screenSharePending, setScreenSharePending] = useState(false);
+  const screenShareActionRef = useRef(null);
+
+  useEffect(() => {
+    const action = { pending: false, disposed: false };
+    screenShareActionRef.current = action;
+    return () => { action.disposed = true; };
+  }, [localParticipant]);
 
   // Auto-enable mic on join and sync internal muted state
   useEffect(() => {
@@ -264,9 +277,27 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
   }, []);
 
   const toggleScreenShare = useCallback(async () => {
-    if (!localParticipant) return;
-    await localParticipant.setScreenShareEnabled(!screenShareOn);
-    setScreenShareOn(!screenShareOn);
+    const action = screenShareActionRef.current;
+    if (!localParticipant || !action || action.pending || action.disposed) return;
+    setScreenShareError("");
+    if (!screenShareOn && isTauriRuntime()) {
+      setShowScreenPreview(true);
+      return;
+    }
+    const enable = !screenShareOn;
+    action.pending = true;
+    setScreenSharePending(true);
+    try {
+      // Call directly from this click so the browser can open its native picker.
+      await localParticipant.setScreenShareEnabled(enable);
+      if (action.disposed && enable) await localParticipant.setScreenShareEnabled(false);
+    } catch (error) {
+      const cancelled = enable && ["NotAllowedError", "AbortError"].includes(error.name);
+      if (!action.disposed && !cancelled) setScreenShareError(error.message || (enable ? "Could not start screen sharing. Please try again." : "Could not stop screen sharing. Please try again."));
+    } finally {
+      action.pending = false;
+      if (!action.disposed) setScreenSharePending(false);
+    }
   }, [localParticipant, screenShareOn]);
 
   // Filter out tracks that are disabled (muted or unpublished)
@@ -330,6 +361,7 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
 
       {/* Main Content Area */}
       {cameraError && <p className="voice-camera-error" role="alert">{cameraError}</p>}
+      {screenShareError && <p className="voice-camera-error" role="alert">{screenShareError}</p>}
       <div className={`flex-1 overflow-y-auto flex flex-col ${isFloating ? 'p-2 gap-2 h-full' : 'p-4 gap-4'}`}>
         {/* Video Grid */}
         {activeVideoTracks.length > 0 && (
@@ -349,8 +381,9 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
               const isLocalCamera = trackRef.participant.isLocal && !isScreenShare;
 
               return (
-                <div
+                <FullscreenVideo
                   key={trackRef.publication.trackSid}
+                  label={isScreenShare ? "screen share" : "camera"}
                   className={`video-tile ${isScreenShare && hasScreenShare
                     ? "col-span-full aspect-video"
                     : "aspect-video"
@@ -380,7 +413,7 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
                     {trackRef.participant.name || trackRef.participant.identity}
                     {trackRef.participant.identity === localParticipant?.identity && " (You)"}
                   </div>
-                </div>
+                </FullscreenVideo>
               );
             })}
           </div>
@@ -431,6 +464,8 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
 
         <button
           onClick={toggleScreenShare}
+          disabled={screenSharePending}
+          aria-busy={screenSharePending}
           className={`px-4 py-2 rounded-xl ${isFloating ? 'text-[10px] min-w-0 flex-1 px-2 py-1.5' : 'text-sm py-2.5 min-w-[120px]'} font-display font-bold uppercase tracking-wider
                       transition-all duration-300 cursor-pointer 
                       ${screenShareOn
@@ -440,7 +475,7 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
           title={screenShareOn ? "Stop screen share" : "Share screen"}
           aria-label={screenShareOn ? "Stop screen share" : "Share screen"}
         >
-          <Monitor size={20} />{!isFloating && <span>{screenShareOn ? "Stop sharing" : "Share screen"}</span>}
+          {screenSharePending ? <LoaderCircle size={20} className="animate-spin" /> : <Monitor size={20} />}{!isFloating && <span>{screenSharePending ? (screenShareOn ? "Stopping…" : "Starting…") : screenShareOn ? "Stop sharing" : "Share screen"}</span>}
         </button>
 
         <button
@@ -456,6 +491,9 @@ function VoiceConnected({ channel, onLeave, isFloating, onExpand, onDragStart })
 
       {showCamPreview && (
         <CameraPreviewModal onPublished={confirmCamera} onCancel={cancelCamera} />
+      )}
+      {showScreenPreview && (
+        <ScreenSharePreviewModal onPublished={() => setShowScreenPreview(false)} onCancel={() => setShowScreenPreview(false)} />
       )}
     </div>
   );

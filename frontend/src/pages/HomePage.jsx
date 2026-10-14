@@ -31,6 +31,11 @@ export default function HomePage() {
   };
   const selectFriend = (friend) => { selectServer(null); setActiveFriend(friend); setMobileOpen(false); };
   const selectChannel = (channel) => { if (channel.server_id !== serverIdRef.current) return; setActiveChannel(channel); setMobileOpen(false); };
+  const joinVoiceChannel = (channel) => {
+    if (channel.server_id !== serverIdRef.current) return;
+    setActiveChannel(channel); setMobileOpen(false);
+    return voiceRef.current?.join(channel);
+  };
   const onChannelsLoaded = useCallback((next, serverId) => {
     if (serverId !== serverIdRef.current) return;
     setChannels(next);
@@ -55,7 +60,7 @@ export default function HomePage() {
     <ServerPresenceProvider server={activeServer}>
       <div className="app-shell">
         <ServerSidebar activeServer={activeServer} onSelect={selectServer} onSelectFriend={selectFriend} globalUnreadCount={unreadCount} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)}>
-          {activeServer ? <ChannelList key={activeServer.id} server={activeServer} activeChannel={activeChannel} onSelect={selectChannel} onChannelsLoaded={onChannelsLoaded} /> : <FriendsPanel onSelectFriend={selectFriend} activeFriend={activeFriend} />}
+          {activeServer ? <ChannelList key={activeServer.id} server={activeServer} activeChannel={activeChannel} onSelect={selectChannel} onJoin={joinVoiceChannel} onChannelsLoaded={onChannelsLoaded} /> : <FriendsPanel onSelectFriend={selectFriend} activeFriend={activeFriend} />}
         </ServerSidebar>
         <main className="app-workspace">
           <div className="mobile-workspace-bar"><button className="icon-button" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu size={24} /></button><strong>{activeServer?.name || "Direct messages"}</strong></div>
